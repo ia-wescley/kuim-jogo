@@ -35,3 +35,8 @@ Ideia do dono (09/11/2026): um dos 2 vídeos diários do kuimenso é um **episó
 ## Pendências do dono
 - Colocar `kuim-jogo.vercel.app` na bio do YouTube, TikTok, Instagram e Facebook (configuração de conta).
 - Criar o app no LivePix (dashboard.livepix.gg/settings/api) e cadastrar as 2 variáveis no Vercel. (Link público já está no jogo: livepix.gg/kuimenso.)
+
+## Segurança do cofre (testada em 09/11/2026)
+- Teste automático (sem rede nem segredo real): `cd jogo/ferramentas && node testes/cofre.test.js`. Rode depois de qualquer mudança em `site/api/cofre.js`; tem que terminar em "TODOS OS TESTES PASSARAM".
+- Conferido no ar: token só com `wallet:read payments:read messages:read` (o próprio `/api/cofre` mostra em `escoposDoToken`); POST/PUT/DELETE = 405; resposta sem token nem segredo; nome/mensagem sem `< >`, links e caracteres invisíveis; cache de 60 s + pausa de 2 min depois de 429; cabeçalhos CSP, X-Frame-Options DENY, nosniff, HSTS; nenhum segredo no git nem nos arquivos públicos.
+- Se `escoposDoToken` um dia mostrar algo além de `:read`, desligue o cofre (apague as variáveis no Vercel) e avise o dono.
