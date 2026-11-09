@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Kuim: o jogo que vocês criam</title>
+<meta name="description" content="Um jogo que cresce todo dia com os comentários dos vídeos do kuimenso.">
+<meta property="og:title" content="Kuim: o jogo que vocês criam">
+<meta property="og:description" content="Comenta no vídeo e o jogo ganha a sua ideia amanhã.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='55' r='40' fill='%23ff3d8b'/></svg>">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div id="palco">
+  <canvas id="tela" width="540" height="960"></canvas>
+  <div id="hud">
+    <div id="dia"></div>
+    <div id="placar">🪙 <span id="moedas">0</span></div>
+  </div>
+  <button id="btnEp" aria-label="Ver episódios">📜</button>
+  <button id="btnCofre" aria-label="Cofre do Kuim">💰</button>
+  <div id="controles">
+    <button class="ctl" id="esq" aria-label="Esquerda">◀</button>
+    <button class="ctl" id="dir" aria-label="Direita">▶</button>
+    <button class="ctl" id="pulo" aria-label="Pular">⤒</button>
+  </div>
+  <div id="cofre" class="painel" hidden>
+    <div class="caixa">
+      <h2>💰 Cofre do Kuim</h2>
+      <p class="sub">Todo Pix de apoio cai aqui e é mostrado ao vivo, direto do LivePix. É <b>apoio</b>, não investimento: não tem retorno em dinheiro. O que entra paga o jogo (domínio, servidor, arte, música) e cada gasto aparece embaixo.</p>
+      <div id="cofreStatus" class="sub">Carregando...</div>
+      <div class="numeros"><div><small>Saldo agora</small><b id="cSaldo">-</b></div><div><small>Já recebido</small><b id="cTotal">-</b></div><div><small>Já gasto</small><b id="cGasto">-</b></div></div>
+      <h3>Últimos apoios</h3><ol id="cApoios"></ol>
+      <h3>Para onde foi o dinheiro</h3><ol id="cGastos"></ol>
+      <a id="cPix" class="pix" target="_blank" rel="noopener" hidden>Mandar um Pix pro Kuim</a>
+      <p class="sub mini">Menor de idade? Só com autorização de um responsável.</p>
+      <button class="fechar">Voltar pro jogo</button>
+    </div>
+  </div>
+  <div id="painel" class="painel" hidden>
+    <div class="caixa">
+      <h2>Episódios</h2>
+      <p class="sub">Cada vídeo do <b>@kuimenso69</b> lê os comentários e o jogo ganha uma coisa nova. Comenta lá o que vem amanhã.</p>
+      <ol id="lista" reversed></ol>
+      <button class="fechar">Voltar pro jogo</button>
+    </div>
+  </div>
+</div>
+<script src="episodios.js"></script>
+<script src="gastos.js"></script>
+<script src="jogo.js"></script>
+</body>
+</html>
