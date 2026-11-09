@@ -4,7 +4,8 @@ Ideia do dono (09/11/2026): um dos 2 vídeos diários do kuimenso é um **episó
 
 - Jogo no ar: **https://kuim-jogo.vercel.app** (Vercel, conta Google do Chrome; projeto `kuim-jogo`)
 - Código: `jogo/site/` (HTML + canvas, sem build). `jogo.js` = jogo; `episodios.js` = histórico público; `gastos.js` = gastos do cofre e link do LivePix; `api/cofre.js` = função do Vercel que lê o LivePix.
-- Git local em `jogo/` (commit a cada episódio).
+- Código público em **https://github.com/ia-wescley/kuim-jogo** (`gh` logado nesta máquina): a cada episódio `git add -A && git commit -m "dia N: ..." && git push`.
+- Chrome: LivePix e GitHub estão logados no Chrome desta máquina ("Browser 1" no `list_connected_browsers`); YouTube/IG/TikTok/FB/Planilha seguem no Chrome dedicado de sempre.
 - Narrador: SEMPRE `"narrador": "debochado"` (Antonio grosso com bipe; ver `posts/ESTRATEGIA.md` seção 5a).
 
 ## Fluxo do episódio (rodada das 17h30)
@@ -21,7 +22,7 @@ Ideia do dono (09/11/2026): um dos 2 vídeos diários do kuimenso é um **episó
 6. **Gravar gameplay**: `cd /e/Projetos/JaPensou/jogo/ferramentas && node grava.js https://kuim-jogo.vercel.app/ /e/Projetos/JaPensou/jogo/gravacoes/epNN 4 12` (4 clipes de 12 s, 1080x1920, sem áudio). Se a novidade precisar de um estado especial, passe um 5º argumento de query (ex.: `chefe=1`) e trate no jogo. Copie os clipes para `posts/jogo-epNN/`.
 7. **Roteiro** `posts/jogo-epNN.json`: 160-190 palavras, 7-10 cenas, `"narrador": "debochado"`, clipes no campo `imagem` (o gerador aceita mp4), pergunta final sem imagem. Estrutura: gancho com a novidade + quem pediu ("O @fulano pediu X, e eu fiz, seu doido") → mostra → como funciona → zoeira → o cofre (número REAL do `/api/cofre`: "o cofre tem R$ X, e gastei R$ Y em Z") → pergunta "o que o Kuim ganha amanhã?" + "link na bio". Até 3 palavrões bipados, nenhum no gancho nem no título/legenda.
 8. **Gerar e postar** como o `posts/PLAYBOOK.md` (4 redes). Título: `Dia N do jogo que VOCÊ cria: <novidade> 🎮 #shorts`. Legenda com o link `kuim-jogo.vercel.app` e o pedido de comentário.
-9. **Registrar**: planilha (Tema = "Jogo do Kuim, dia N: ...", formato=jogo), `posts/historico.md` (formato=jogo), git commit em `jogo/` (`git add -A && git commit -m "dia N: ..."`).
+9. **Registrar**: planilha (Tema = "Jogo do Kuim, dia N: ...", formato=jogo), `posts/historico.md` (formato=jogo), git commit + push em `jogo/`.
 
 ## Cofre transparente (LivePix)
 
@@ -33,4 +34,4 @@ Ideia do dono (09/11/2026): um dos 2 vídeos diários do kuimenso é um **episó
 
 ## Pendências do dono
 - Colocar `kuim-jogo.vercel.app` na bio do YouTube, TikTok, Instagram e Facebook (configuração de conta).
-- Criar o app no LivePix e cadastrar as 2 variáveis no Vercel; mandar o link público do LivePix.
+- Criar o app no LivePix (dashboard.livepix.gg/settings/api) e cadastrar as 2 variáveis no Vercel. (Link público já está no jogo: livepix.gg/kuimenso.)
