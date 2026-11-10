@@ -3,14 +3,16 @@
 // Segurança:
 // - o token é pedido SÓ com escopos de leitura; nada aqui saca, transfere ou altera a conta;
 // - o token e o segredo nunca saem da função (a resposta só tem números, nomes e mensagens filtradas);
-// - só aceita GET/HEAD, ignora qualquer parâmetro da URL e guarda tudo em cache (60 s), então
-//   ninguém consegue usar este endereço para martelar a API do LivePix;
-// - se o LivePix limitar (429) ou cair, devolve o último resumo bom por até 1 h.
+// - só aceita GET/HEAD; URL com parâmetro (?x=...) é redirecionada para /api/cofre sem tocar no LivePix,
+//   para ninguém furar o cache da CDN e gastar o limite de chamadas (10/11: um ?t= aleatório causava 429);
+// - cache de 5 min na função e na CDN (com stale-while-revalidate), então o LivePix é chamado poucas vezes por hora;
+// - se o LivePix limitar (429), respeita o Retry-After e espera cada vez mais (5, 10, 20, até 60 min);
+// - se o LivePix limitar ou cair, devolve o último resumo bom por até 24 h, marcado como "velho".
 const ESCOPOS = 'wallet:read payments:read messages:read';
-const CACHE_MS = 60_000, PAUSA_429_MS = 120_000, VELHO_MS = 3_600_000;
+const CACHE_MS = 300_000, PAUSA_MIN_MS = 300_000, PAUSA_MAX_MS = 3_600_000, VELHO_MS = 86_400_000;
 let tk = {valor: null, ate: 0, escopos: ''};
 let cache = {em: 0, dados: null};
-let pausaAte = 0, emAndamento = null;
+let pausaAte = 0, pausaAtual = 0, emAndamento = null;
 
 async function token() {
   if (tk.valor && Date.now() < tk.ate) return tk.valor;
@@ -21,7 +23,7 @@ async function token() {
     scope: ESCOPOS,
   });
   const r = await fetch('https://oauth.livepix.gg/oauth2/token', {method: 'POST', body: corpo, headers: {'Content-Type': 'application/x-www-form-urlencoded'}});
-  if (!r.ok) throw Object.assign(new Error('token ' + r.status), {status: r.status});
+  if (!r.ok) throw Object.assign(new Error('token ' + r.status), {status: r.status, esperaS: 0});
   const j = await r.json();
   tk = {valor: j.access_token, ate: Date.now() + Math.max(60, (j.expires_in || 3600) - 120) * 1000, escopos: j.scope || ''};
   return tk.valor;
@@ -30,7 +32,8 @@ async function token() {
 async function api(caminho) {
   const r = await fetch('https://api.livepix.gg' + caminho, {headers: {Authorization: 'Bearer ' + (await token())}});
   if (r.status === 401) tk.ate = 0; // token vencido: pede outro na próxima
-  if (!r.ok) throw Object.assign(new Error(caminho.split('?')[0] + ' ' + r.status), {status: r.status});
+  const espera = Number(r.headers && r.headers.get && r.headers.get('retry-after'));
+  if (!r.ok) throw Object.assign(new Error(caminho.split('?')[0] + ' ' + r.status), {status: r.status, esperaS: Number.isFinite(espera) ? espera : 0});
   return (await r.json()).data;
 }
 
@@ -72,7 +75,13 @@ module.exports = async (req, res) => {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({erro: 'só leitura'});
   }
-  res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+  const temQuery = String(req.url || '').includes('?') || Object.keys(req.query || {}).length > 0;
+  if (temQuery) {
+    res.setHeader('Location', '/api/cofre');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.status(308).json({vaPara: '/api/cofre'});
+  }
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
   if (!process.env.LIVEPIX_CLIENT_ID || !process.env.LIVEPIX_CLIENT_SECRET) {
     return res.status(200).json({ativo: false, aviso: 'Cofre ainda não conectado ao LivePix.'});
   }
@@ -80,17 +89,21 @@ module.exports = async (req, res) => {
   if (cache.dados && agora - cache.em < CACHE_MS) return res.status(200).json(cache.dados);
   if (agora < pausaAte) {
     if (cache.dados && agora - cache.em < VELHO_MS) return res.status(200).json({...cache.dados, velho: true});
-    res.setHeader('Cache-Control', 'public, s-maxage=30');
-    return res.status(200).json({ativo: false, aviso: 'LivePix pediu uma pausa, tenta daqui a pouco.'});
+    res.setHeader('Cache-Control', 'public, s-maxage=120');
+    return res.status(200).json({ativo: false, aviso: 'O LivePix pediu uma pausa. O Pix continua funcionando; o saldo volta a aparecer daqui a pouco.'});
   }
   try {
     emAndamento = emAndamento || buscar().finally(() => { emAndamento = null; });
     cache = {em: Date.now(), dados: await emAndamento};
+    pausaAtual = 0;
     return res.status(200).json(cache.dados);
   } catch (e) {
-    if (e.status === 429) pausaAte = Date.now() + PAUSA_429_MS;
+    if (e.status === 429) {
+      pausaAtual = Math.min(PAUSA_MAX_MS, pausaAtual ? pausaAtual * 2 : PAUSA_MIN_MS);
+      pausaAte = Date.now() + Math.max(pausaAtual, Math.min(PAUSA_MAX_MS, (e.esperaS || 0) * 1000));
+    }
     if (cache.dados && agora - cache.em < VELHO_MS) return res.status(200).json({...cache.dados, velho: true});
-    res.setHeader('Cache-Control', 'public, s-maxage=30');
-    return res.status(200).json({ativo: false, aviso: 'LivePix fora do ar agora, tenta daqui a pouco.', erro: String(e.message).slice(0, 40)});
+    res.setHeader('Cache-Control', 'public, s-maxage=120');
+    return res.status(200).json({ativo: false, aviso: 'O LivePix não respondeu agora. O Pix continua funcionando; o saldo volta a aparecer daqui a pouco.', erro: String(e.message).slice(0, 40)});
   }
 };

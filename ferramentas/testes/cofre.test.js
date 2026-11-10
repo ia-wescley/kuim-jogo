@@ -18,9 +18,9 @@ global.fetch = async (url, op = {}) => {
   return {ok: false, status: 404, json: async () => ({})};
 };
 const novo = () => { delete require.cache[caminho]; return require(caminho); };
-const chamar = async (fn, method = 'GET') => {
+const chamar = async (fn, method = 'GET', url = '/api/cofre') => {
   const r = {code: 0, h: {}, body: null, status(c) { this.code = c; return this; }, setHeader(k, v) { this.h[k] = v; }, json(b) { this.body = b; return this; }};
-  await fn({method, query: {}}, r); return r;
+  await fn({method, url, query: url.includes('?') ? {t: '1'} : {}}, r); return r;
 };
 (async () => {
   process.env.LIVEPIX_CLIENT_ID = 'id-falso'; process.env.LIVEPIX_CLIENT_SECRET = SEGREDO;
@@ -44,6 +44,11 @@ const chamar = async (fn, method = 'GET') => {
 
   for (const m of ['POST', 'PUT', 'DELETE', 'PATCH']) assert.strictEqual((await chamar(f, m)).code, 405);
   console.log('ok: POST/PUT/DELETE/PATCH = 405');
+
+  const cq = chamadas; const rq = await chamar(novo(), 'GET', '/api/cofre?t=123');
+  assert.strictEqual(rq.code, 308, 'URL com parâmetro redireciona'); assert.strictEqual(rq.h.Location, '/api/cofre');
+  assert.strictEqual(chamadas, cq, 'URL com parâmetro não chama o LivePix (não fura o cache)');
+  console.log('ok: ?parâmetro vira redirecionamento sem tocar no LivePix');
 
   f = novo(); modo = '429';
   r = await chamar(f); assert.strictEqual(r.body.ativo, false);

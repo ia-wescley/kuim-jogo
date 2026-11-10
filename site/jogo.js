@@ -605,7 +605,7 @@
     try {
       const d = await fetch('/api/cofre').then(r => r.json());
       if (!d.ativo) { st.textContent = d.aviso || 'Cofre ainda não conectado.'; return; }
-      st.textContent = 'Atualizado: ' + new Date(d.atualizado).toLocaleString('pt-BR');
+      st.textContent = 'Atualizado: ' + new Date(d.atualizado).toLocaleString('pt-BR') + (d.velho ? ' (o LivePix está em pausa; pode estar um pouco atrasado)' : '');
       document.getElementById('cSaldo').textContent = reais(d.saldo);
       document.getElementById('cTotal').textContent = reais(d.totalRecebidoListado);
       const la = document.getElementById('cApoios'); la.textContent = '';
