@@ -9,7 +9,8 @@
   const g = tela.getContext('2d');
   const params = new URLSearchParams(location.search);
   const DEMO = params.has('demo');            // ?demo=1: o bot joga sozinho (usado para gravar o vídeo)
-  const IR = params.get('ir') || '';          // atalho para gravar: parede | lava | chefe
+  const IR = params.get('ir') || '';
+  const LIMPO = params.has('limpo');          // ?limpo=1: sem textos no meio da tela (clipes que ficam atrás das cartelas do vídeo)          // atalho para gravar: parede | lava | chefe
   const SEMENTE = Number(params.get('seed') || (DEMO ? 7 : Date.now() % 100000));
 
   // ---------------------------------------------------------------- aleatório com semente
@@ -482,6 +483,7 @@
     let y = 128;
     if (balas > 0) { texto(`🔫 ${balas}`, 22, y, 30, '#4dd2ff', 'left'); y += 40; }
     if (temEspada) { texto(escudoT > 0 ? '🛡️ recarregando' : '🛡️ pronto', 22, y, 24, escudoT > 0 ? '#9a8fbf' : '#4dd2ff', 'left'); y += 36; }
+    if (LIMPO) { for (const n of numeros) { g.globalAlpha = Math.min(1, n.vida * 2); texto(n.txt, n.x - cam, n.y, 30, '#fff'); } g.globalAlpha = 1; return; }
     if (desafio && desafio.estado === 'ativo') {
       const t = Math.max(0, Math.ceil(desafio.t));
       texto('CHÃO É LAVA', W / 2, 250, 40, '#ff5a1f');
