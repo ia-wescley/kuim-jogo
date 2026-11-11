@@ -10,6 +10,11 @@ global.fetch = async (url, op = {}) => {
     return {ok: true, status: 200, json: async () => ({access_token: TOKEN, expires_in: 3600, scope: escopoPedido})};
   }
   if (modo === '429') return {ok: false, status: 429, json: async () => ({})};
+  if (modo === 'wallet429' && url.endsWith('/v2/wallet')) return {ok: false, status: 429, headers: {get: () => '30'}, json: async () => ({})};
+  if (url.includes('/v2/wallet/BRL/transactions')) return {ok: true, status: 200, json: async () => ({data: [
+    {amount: 100, balance: 500, timestamp: '2026-11-01T10:00:00Z'},
+    {amount: 200, balance: 777, timestamp: '2026-11-10T10:00:00Z'},
+  ]})};
   if (url.includes('/v2/wallet')) return {ok: true, status: 200, json: async () => ({data: [{currency: 'BRL', balance: 12345}]})};
   if (url.includes('/v2/messages')) return {ok: true, status: 200, json: async () => ({data: [
     {username: '<img src=x onerror=alert(1)>', amount: 500, createdAt: '2026-11-09', message: '<script>alert(1)</script> compra em http://golpe.xyz/pix agora'},
@@ -49,6 +54,14 @@ const chamar = async (fn, method = 'GET', url = '/api/cofre') => {
   assert.strictEqual(rq.code, 308, 'URL com parâmetro redireciona'); assert.strictEqual(rq.h.Location, '/api/cofre');
   assert.strictEqual(chamadas, cq, 'URL com parâmetro não chama o LivePix (não fura o cache)');
   console.log('ok: ?parâmetro vira redirecionamento sem tocar no LivePix');
+
+  f = novo(); modo = 'wallet429';
+  r = await chamar(f);
+  assert.strictEqual(r.body.ativo, true, 'carteira em 429 não derruba o cofre');
+  assert.strictEqual(r.body.saldo, 7.77, 'saldo vem da transação mais recente do extrato');
+  assert.strictEqual(r.body.fonteDoSaldo, 'extrato');
+  assert(!JSON.stringify(r.body).includes(SEGREDO) && !JSON.stringify(r.body).includes(TOKEN));
+  console.log('ok: /v2/wallet em 429 cai para o extrato e mostra o saldo');
 
   f = novo(); modo = '429';
   r = await chamar(f); assert.strictEqual(r.body.ativo, false);

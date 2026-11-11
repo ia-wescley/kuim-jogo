@@ -45,12 +45,31 @@ const limpa = (t, n) => String(t || '')
   .replace(/\s+/g, ' ')
   .slice(0, n).trim();
 
+// Saldo: /v2/wallet tem limite GLOBAL de 100/min dividido entre todos os clientes do LivePix e vive em 429
+// (11/11: 429 até numa chamada anônima). Plano B: o campo "balance" da transação mais recente em
+// /v2/wallet/{moeda}/transactions (mesmo escopo wallet:read, limite de 1000/min). Plano C: último saldo bom.
+async function saldoReais() {
+  try {
+    const carteira = await api('/v2/wallet');
+    const lista = Array.isArray(carteira) ? carteira : [carteira];
+    const brl = lista.find(c => String(c?.currency || '').toUpperCase() === 'BRL') || {};
+    return {saldo: num(brl.balance) / 100, aReceber: num(brl.balancePending ?? brl.pendingBalance ?? brl.receivable) / 100, fonte: 'carteira'};
+  } catch (e) {
+    if (e.status !== 429) throw e;
+    const tr = await api('/v2/wallet/BRL/transactions?limit=20');
+    const lista = (Array.isArray(tr) ? tr : []).filter(t => Number.isFinite(Number(t?.balance)));
+    if (!lista.length) return {saldo: 0, aReceber: null, fonte: 'extrato vazio'};
+    const quando = t => Date.parse(t.timestamp || t.createdAt || '') || 0;
+    const ultima = lista.reduce((a, b) => (quando(b) > quando(a) ? b : a));
+    return {saldo: num(ultima.balance) / 100, aReceber: null, fonte: 'extrato'};
+  }
+}
+
+const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
 async function buscar() {
-  const carteira = await api('/v2/wallet');
+  const s = await saldoReais();
   const mensagens = await api('/v2/messages?limit=50').catch(() => []); // em sequência: menos chance de 429
-  const lista = Array.isArray(carteira) ? carteira : [carteira];
-  const brl = lista.find(c => String(c?.currency || '').toUpperCase() === 'BRL') || {};
-  const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const apoios = (Array.isArray(mensagens) ? mensagens : []).map(m => ({
     nome: limpa(m.username || m.name, 30) || 'anônimo',
     valor: num(m.amount) / 100,
@@ -60,9 +79,10 @@ async function buscar() {
   return {
     ativo: true,
     atualizado: new Date().toISOString(),
-    saldo: num(brl.balance) / 100,
-    aReceber: num(brl.pendingBalance ?? brl.receivable) / 100,
-    totalRecebidoListado: Math.round(apoios.reduce((s, a) => s + a.valor, 0) * 100) / 100,
+    saldo: s.saldo,
+    aReceber: s.aReceber,
+    fonteDoSaldo: s.fonte,
+    totalRecebidoListado: Math.round(apoios.reduce((x, a) => x + a.valor, 0) * 100) / 100,
     apoiosListados: apoios.length,
     apoios,
     escoposDoToken: tk.escopos, // transparência: mostra que o acesso é só de leitura
@@ -89,7 +109,7 @@ module.exports = async (req, res) => {
   if (cache.dados && agora - cache.em < CACHE_MS) return res.status(200).json(cache.dados);
   if (agora < pausaAte) {
     if (cache.dados && agora - cache.em < VELHO_MS) return res.status(200).json({...cache.dados, velho: true});
-    res.setHeader('Cache-Control', 'public, s-maxage=120');
+    res.setHeader('Cache-Control', 'public, s-maxage=300');
     return res.status(200).json({ativo: false, aviso: 'O LivePix pediu uma pausa. O Pix continua funcionando; o saldo volta a aparecer daqui a pouco.'});
   }
   try {
@@ -103,7 +123,7 @@ module.exports = async (req, res) => {
       pausaAte = Date.now() + Math.max(pausaAtual, Math.min(PAUSA_MAX_MS, (e.esperaS || 0) * 1000));
     }
     if (cache.dados && agora - cache.em < VELHO_MS) return res.status(200).json({...cache.dados, velho: true});
-    res.setHeader('Cache-Control', 'public, s-maxage=120');
+    res.setHeader('Cache-Control', 'public, s-maxage=300');
     return res.status(200).json({ativo: false, aviso: 'O LivePix não respondeu agora. O Pix continua funcionando; o saldo volta a aparecer daqui a pouco.', erro: String(e.message).slice(0, 40)});
   }
 };
