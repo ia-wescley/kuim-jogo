@@ -2,6 +2,8 @@
 // Mundo infinito para a direita, gerado em blocos. Cada episódio acrescenta algo aqui.
 // Dia 1 (10/11/2026): passagem secreta com arma (@Vitin-d6w), chefão de 550 de vida + espada e escudo
 // (@OtseniOfical, com o boss de @lovepets5492: moeda deixa a espada mais forte) e o desafio "chão é lava" (@Arthurwicthoff).
+// Dia 2 (11/11/2026): barra de vida de 100 e animação de morte (@Num-sei-0 e @ashfarmadordeaura), espinhos no chão
+// (pedido 2 dias seguidos) e a loja do Kuim com terno e bigode por 600 moedas e munição (@Vitin-d6w).
 (() => {
   'use strict';
   const W = 540, H = 960;
@@ -23,14 +25,19 @@
   const PILAR_W = 100, PILAR_H = 110;
   const DESAFIO_SEG = 60, DESAFIO_PREMIO = 250;
   const CHEFE_VIDA = 550;
+  const VIDA_MAX = 100, DANO_ESPINHO = 20, DANO_CHEFE = 20;
+  const PRECO_TERNO = 600, PRECO_BALAS = 60;
 
   // ---------------------------------------------------------------- mundo
   const plataformas = []; // {x, y, w, chao?, lava?, pilar?, segredo?}
   const moedas = [];      // {x, y, pega}
   const itens = [];       // {x, y, tipo: 'arma'|'espada', pego}
+  const espinhos = [];    // {x, w} no chão
+  const lojas = [];       // {x, usada}
   let fimGerado = 0, blocoN = 0, geraModo = 'normal';
   const BLOCO_SEGREDO = IR === 'parede' ? 3 : 4 + Math.floor(rnd() * 4);
   const BLOCO_PLACA = IR === 'lava' ? 2 : IR ? -1 : 11;
+  const BLOCO_LOJA = IR === 'loja' ? 1 : IR ? -1 : 7;
   const pendente = IR === 'chefe' ? ['pedestal', 'arena', 'arena'] : [];
   let desafio = null;     // {x, estado: espera|escolha|ativo|feito|falhou|passou, t}
   let chefe = null;
@@ -77,6 +84,13 @@
       moedaChao(x0 + 120);
       return;
     }
+    if (idx === BLOCO_LOJA || (!IR && idx > BLOCO_LOJA && (idx - BLOCO_LOJA) % 18 === 0)) {
+      // a loja do Kuim (ideia de @Vitin-d6w)
+      chaoCheio(x0);
+      lojas.push({x: x0 + 300, usada: false});
+      moedaChao(x0 + 100);
+      return;
+    }
     if (idx === BLOCO_SEGREDO) {
       // parede falsa: igual às outras, mas dá para atravessar. Dentro tem a arma e o nome de quem pediu.
       chaoCheio(x0);
@@ -95,6 +109,7 @@
     } else {
       chaoCheio(x0);
       if (x0 > 0 && rnd() < 0.5) plataformas.push({x: x0 + entre(150, BLOCO - 250), y: CHAO - PILAR_H, w: PILAR_W, pilar: true});
+      else if (x0 > 0 && (IR === 'espinho' || IR === 'morte' || rnd() < 0.6)) espinhos.push({x: x0 + entre(120, BLOCO - 200), w: 3 + Math.floor(rnd() * 3)}); // espinhos (pedido 2 dias seguidos)
     }
     flutuantes(x0);
     for (let k = 0; k < 2; k++) moedaChao(x0 + entre(60, BLOCO - 60));
@@ -107,16 +122,20 @@
     }
     for (let i = moedas.length - 1; i >= 0; i--) if (moedas[i].x >= X) moedas.splice(i, 1);
     for (let i = itens.length - 1; i >= 0; i--) if (itens[i].x >= X) itens.splice(i, 1);
+    for (let i = espinhos.length - 1; i >= 0; i--) if (espinhos[i].x + espinhos[i].w * 26 >= X) espinhos.splice(i, 1);
+    for (let i = lojas.length - 1; i >= 0; i--) if (lojas[i].x >= X) lojas.splice(i, 1);
     fimGerado = X;
   }
   for (let i = 0; i < 4; i++) gerarBloco();
 
   // ---------------------------------------------------------------- jogador
-  const kuim = {x: 120, y: CHAO - 60, vx: 0, vy: 0, kb: 0, r: 30, noChao: false, olhar: 1, piscar: 0, esticar: 0, golpe: 0, inv: 0};
-  let moedasPegas = 0, cam = 0, tempo = 0, balas = IR === 'chefe' && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
+  const kuim = {x: 120, y: CHAO - 60, vx: 0, vy: 0, kb: 0, r: 30, noChao: false, olhar: 1, piscar: 0, esticar: 0, golpe: 0, inv: 0, vida: IR === 'morte' ? 20 : VIDA_MAX, morto: 0, giro: 0, terno: false};
+  let lojaAberta = null, botLoja = 0, mortes = 0;
+  let moedasPegas = IR === 'loja' && DEMO ? PRECO_TERNO + 40 : 0, cam = 0, tempo = 0, balas = IR === 'chefe' && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
   const particulas = [], tiros = [], avisos = [], numeros = [];
   const placar = document.getElementById('moedas');
   const somaMoedas = n => { moedasPegas = Math.max(0, moedasPegas + n); placar.textContent = moedasPegas; };
+  placar.textContent = moedasPegas;
   const aviso = (txt, cor = '#ffd84d', sub = '') => { avisos.length = 0; avisos.push({txt, sub, cor, t: 2.4}); };
 
   // ---------------------------------------------------------------- controles
@@ -143,10 +162,45 @@
   };
   botao('esq', 'esq'); botao('dir', 'dir'); botao('pulo', 'pulo'); botao('atk', 'atk');
   tela.addEventListener('pointerdown', e => {
+    const r = tela.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    if (lojaAberta) { if (y > 480 && y < 760) { if (x < W / 3) sairLoja(); else if (x < W * 2 / 3) comprar('balas'); else comprar('terno'); } return; }
     if (!desafio || desafio.estado !== 'escolha') return;
-    const r = tela.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W;
     if (x < W / 2) passarDesafio(); else encararDesafio();
   });
+
+  // ---------------------------------------------------------------- vida, espinhos e morte (ideias de @Num-sei-0 e @ashfarmadordeaura)
+  function dano(n, lado) {
+    if (kuim.morto > 0 || kuim.inv > 0) return;
+    kuim.vida = Math.max(0, kuim.vida - n); kuim.inv = 0.9; tremor = 5;
+    kuim.kb = (lado || -kuim.olhar) * 420; kuim.vy = -620; kuim.noChao = false;
+    numeros.push({x: kuim.x, y: kuim.y - 50, txt: '-' + n + ' ❤', vida: 0.8});
+    if (kuim.vida <= 0) morrer();
+  }
+  function morrer() {
+    kuim.morto = 2.6; kuim.vy = -900; kuim.kb = 0; kuim.vx = 0; kuim.giro = 0; mortes++; tremor = 10;
+    for (let i = 0; i < 3; i++) brilho(kuim.x, kuim.y, '#ff3d8b');
+  }
+  function renascer() {
+    const seguro = plataformas.filter(p => p.chao && !p.lava && p.x + p.w < kuim.x - 60 && p.x + p.w > cam).pop() || plataformas.find(p => p.chao) || plataformas[0];
+    kuim.x = Math.max(seguro.x + 40, cam + 80); kuim.y = CHAO - 300; kuim.vy = 0; kuim.giro = 0;
+    kuim.vida = VIDA_MAX; kuim.inv = 1.5; kuim.morto = 0;
+    for (const e of espinhos) if (Math.abs(e.x - kuim.x) < 120) e.x += 200; // não renasce em cima de espinho
+    aviso('RENASCEU', '#7cff9b', 'vida cheia de novo');
+  }
+
+  // ---------------------------------------------------------------- loja do Kuim (ideia de @Vitin-d6w)
+  function sairLoja() { lojaAberta.usada = true; lojaAberta = null; kuim.x += 10; }
+  function comprar(oque) {
+    if (oque === 'terno') {
+      if (kuim.terno) return aviso('Já tá de terno', '#c9b8ff');
+      if (moedasPegas < PRECO_TERNO) return aviso('Pobre demais', '#ff5a1f', `o terno custa ${PRECO_TERNO} moedas`);
+      somaMoedas(-PRECO_TERNO); kuim.terno = true; aviso('KUIM DE TERNO!', '#ffd84d', 'com bigode e tudo');
+      for (let i = 0; i < 5; i++) brilho(kuim.x + entre(-60, 60), kuim.y - entre(0, 80), '#ffd84d');
+    } else {
+      if (moedasPegas < PRECO_BALAS) return aviso('Pobre demais', '#ff5a1f', `as balas custam ${PRECO_BALAS} moedas`);
+      somaMoedas(-PRECO_BALAS); balas += 20; aviso('+20 BALAS', '#4dd2ff');
+    }
+  }
 
   // ---------------------------------------------------------------- desafio "chão é lava" (ideia de @Arthurwicthoff)
   function encararDesafio() {
@@ -172,6 +226,14 @@
   function bot(dt) {
     if (botParado > 0) { botParado -= dt; tecla.dir = false; tecla.esq = false; return; }
     if (desafio && desafio.estado === 'escolha') { botEscolha += dt; if (botEscolha > 1.5) encararDesafio(); return; }
+    if (lojaAberta) {
+      botLoja += dt;
+      if (botLoja > 1.6 && !kuim.terno && moedasPegas >= PRECO_TERNO) comprar('terno');
+      else if (botLoja > 2.6 && moedasPegas >= PRECO_BALAS && balas === 0) comprar('balas');
+      else if (botLoja > 3.4) { sairLoja(); botLoja = 0; }
+      return;
+    }
+    if (kuim.morto > 0) return;
     tecla.esq = false; tecla.dir = true;
     if (botPulo > 0) { botPulo -= dt; tecla.pulo = true; } else tecla.pulo = false;
     if (chefe && chefe.ativo && !chefe.morto) {
@@ -194,6 +256,8 @@
     const temChao = chaoEm(kuim.x + 45) && chaoEm(kuim.x + 85);
     const pilar = plataformas.find(p => p.pilar && !p.segredo && p.x > kuim.x && p.x - kuim.x < 90);
     if (pilar && !sob) { puloPedido = true; botPulo = 0.45; return; }
+    const esp = IR !== 'morte' && espinhos.find(e => e.x > kuim.x && e.x - kuim.x < 75);
+    if (esp && !sob) { puloPedido = true; botPulo = 0.45; return; }
     const alvo = plataformas.find(p => !p.chao && !p.pilar && p.x > kuim.x + 40 && p.x < kuim.x + 190 && p.y < kuim.y);
     if (!temChao || (alvo && rnd() < 0.08)) { puloPedido = true; if (!temChao) botPulo = 0.3; }
   }
@@ -220,6 +284,24 @@
     if (desafio && desafio.estado === 'escolha') {
       if (puloPedido) encararDesafio(); else if (tecla.esq) passarDesafio();
       puloPedido = false; return; // jogo pausado esperando a escolha
+    }
+    const lojaPerto = lojas.find(l => !l.usada && kuim.x >= l.x && kuim.x < l.x + 60 && kuim.noChao);
+    if (lojaPerto && !lojaAberta && kuim.morto <= 0) { lojaAberta = lojaPerto; kuim.vx = 0; puloPedido = false; ataquePedido = false; botLoja = 0; }
+    if (lojaAberta) {
+      if (tecla.esq) sairLoja(); else if (ataquePedido) comprar('balas'); else if (puloPedido) comprar('terno');
+      puloPedido = false; ataquePedido = false;
+      return; // jogo pausado na loja
+    }
+    if (kuim.morto > 0) {
+      // animação de morte: olho de X, gira, pula pra cima e cai pra fora da tela
+      kuim.morto -= dt; kuim.giro += dt * 9; kuim.vy += GRAV * 0.6 * dt; kuim.y += kuim.vy * dt;
+      for (const p of particulas) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 900 * dt * p.g; p.vida -= dt; }
+      for (let i = particulas.length - 1; i >= 0; i--) if (particulas[i].vida <= 0) particulas.splice(i, 1);
+      for (const n of numeros) { n.y -= 60 * dt; n.vida -= dt; }
+      for (let i = numeros.length - 1; i >= 0; i--) if (numeros[i].vida <= 0) numeros.splice(i, 1);
+      tremor = Math.max(0, tremor - dt * 30);
+      if (kuim.morto <= 0) renascer();
+      puloPedido = false; ataquePedido = false; return;
     }
 
     const dirx = (tecla.dir ? 1 : 0) - (tecla.esq ? 1 : 0);
@@ -260,6 +342,9 @@
       kuim.x = Math.max(seguro.x + 40, cam + 80); kuim.y = CHAO - 300; kuim.vy = 0;
     }
 
+    for (const e of espinhos) {
+      if (kuim.x + kuim.r * 0.6 > e.x && kuim.x - kuim.r * 0.6 < e.x + e.w * 26 && kuim.y + kuim.r > CHAO - 22) { dano(DANO_ESPINHO, -1); break; }
+    }
     for (const m of moedas) {
       if (!m.pega && Math.hypot(m.x - kuim.x, m.y - kuim.y) < kuim.r + 16) { m.pega = true; somaMoedas(1); brilho(m.x, m.y, '#ffd84d'); }
     }
@@ -355,7 +440,7 @@
       const lado = Math.sign(kuim.x - c.x) || -1;
       kuim.kb = lado * 520; kuim.vy = -520; kuim.noChao = false; kuim.inv = 0.8;
       if (temEspada && escudoT <= 0) { escudoT = 3; brilho(kuim.x + lado * -30, kuim.y, '#4dd2ff'); numeros.push({x: kuim.x, y: kuim.y - 50, txt: 'DEFENDEU!', vida: 0.8}); }
-      else { somaMoedas(-5); numeros.push({x: kuim.x, y: kuim.y - 50, txt: '-5 🪙', vida: 0.8}); }
+      else { kuim.inv = 0; dano(DANO_CHEFE, lado); }
     }
   }
   function poeira(x, y, n) { for (let i = 0; i < n; i++) particulas.push({x, y, vx: entre(-120, 120), vy: entre(-160, -40), vida: 0.4, g: 1, cor: '#c9b8ff', t: 4}); }
@@ -426,8 +511,9 @@
   }
   function desenharKuim() {
     const {x, y, r} = kuim, e = kuim.esticar;
-    if (kuim.inv > 0 && Math.floor(tempo * 20) % 2) return;
+    if (kuim.inv > 0 && kuim.morto <= 0 && Math.floor(tempo * 20) % 2) return;
     g.save(); g.translate(x - cam, y);
+    if (kuim.morto > 0) g.rotate(kuim.giro);
     // equipamento atrás/na frente
     if (temEspada) {
       const sw = kuim.golpe > 0 ? (0.3 - kuim.golpe) / 0.3 : 0;
@@ -440,10 +526,27 @@
     g.fillStyle = '#ff8cbb'; g.beginPath(); g.ellipse(-r * 0.35, -r * 0.45, r * 0.5, r * 0.22, -0.3, 0, 7); g.fill();
     g.fillStyle = '#ffd84d'; g.beginPath(); g.arc(-kuim.olhar * r * 0.85, r * 0.15, 5, 0, 7); g.fill();
     g.fillStyle = '#4dd2ff'; g.beginPath(); g.arc(-kuim.olhar * r * 0.65, r * 0.4, 5, 0, 7); g.fill();
+    if (kuim.terno) {
+      // terno preto com camisa branca e gravata vermelha (skin da loja)
+      g.save(); g.beginPath(); g.ellipse(0, 0, r * 1.25, r, 0, 0, 7); g.clip();
+      g.fillStyle = '#16121f'; g.fillRect(-r * 1.3, r * 0.3, r * 2.6, r);
+      g.fillStyle = '#fff'; g.beginPath(); g.moveTo(-9, r * 0.3); g.lineTo(9, r * 0.3); g.lineTo(0, r * 0.95); g.fill();
+      g.fillStyle = '#e0182d'; g.beginPath(); g.moveTo(-4, r * 0.32); g.lineTo(4, r * 0.32); g.lineTo(3, r * 0.8); g.lineTo(0, r * 0.95); g.lineTo(-3, r * 0.8); g.fill();
+      g.restore();
+    }
     const ox = kuim.olhar * r * 0.28, fecha = kuim.piscar > 0;
     for (const dx of [-11, 11]) {
+      if (kuim.morto > 0) { // olho de X
+        g.strokeStyle = '#1a0d2e'; g.lineWidth = 4; g.beginPath();
+        g.moveTo(ox + dx - 6, -10); g.lineTo(ox + dx + 6, 2); g.moveTo(ox + dx + 6, -10); g.lineTo(ox + dx - 6, 2); g.stroke();
+        continue;
+      }
       g.fillStyle = '#fff'; g.beginPath(); g.ellipse(ox + dx, -4, 8, fecha ? 1.5 : 10, 0, 0, 7); g.fill();
       if (!fecha) { g.fillStyle = '#1a0d2e'; g.beginPath(); g.arc(ox + dx + kuim.olhar * 3, -2, 4.5, 0, 7); g.fill(); }
+    }
+    if (kuim.terno) { // bigode
+      g.fillStyle = '#2a160a'; g.beginPath();
+      g.ellipse(ox - 9, 11, 11, 5, 0.35, 0, 7); g.ellipse(ox + 9, 11, 11, 5, -0.35, 0, 7); g.fill();
     }
     g.fillStyle = '#c21d63'; const passo = kuim.noChao ? Math.sin(tempo * 18) * Math.min(1, Math.abs(kuim.vx) / VEL) * 6 : 0;
     g.beginPath(); g.ellipse(-12, r - 2 + passo, 9, 6, 0, 0, 7); g.fill();
@@ -480,7 +583,12 @@
     g.fillStyle = cor; g.fillText(t, x, y);
   }
   function hud() {
-    let y = 128;
+    // barra de vida
+    const vw = 170, vx = 22, vy = 112;
+    g.fillStyle = '#120a22'; g.beginPath(); g.roundRect(vx - 4, vy - 4, vw + 8, 28, 8); g.fill();
+    g.fillStyle = kuim.vida > 40 ? '#7cff9b' : '#ff3d3d'; g.beginPath(); g.roundRect(vx, vy, Math.max(0, vw * kuim.vida / VIDA_MAX), 20, 6); g.fill();
+    texto(`❤ ${kuim.vida}`, vx + vw / 2, vy + 17, 18, '#fff');
+    let y = 172;
     if (balas > 0) { texto(`🔫 ${balas}`, 22, y, 30, '#4dd2ff', 'left'); y += 40; }
     if (temEspada) { texto(escudoT > 0 ? '🛡️ recarregando' : '🛡️ pronto', 22, y, 24, escudoT > 0 ? '#9a8fbf' : '#4dd2ff', 'left'); y += 36; }
     if (LIMPO) { for (const n of numeros) { g.globalAlpha = Math.min(1, n.vida * 2); texto(n.txt, n.x - cam, n.y, 30, '#fff'); } g.globalAlpha = 1; return; }
@@ -506,6 +614,26 @@
       texto(a.txt, 0, 0, a.txt.length > 14 ? 40 : 50, a.cor);
       if (a.sub) texto(a.sub, 0, 46, 26, '#fff');
       g.restore(); g.globalAlpha = 1;
+    }
+    if (kuim.morto > 0) {
+      g.fillStyle = `rgba(60,0,20,${Math.min(0.55, (2.6 - kuim.morto) * 0.5)})`; g.fillRect(0, 0, W, H);
+      texto('MORREU!', W / 2, 360, 72, '#ff3d3d');
+      texto(mortes > 1 ? `já são ${mortes} mortes` : 'a vida acabou', W / 2, 410, 28, '#fff');
+    }
+    if (lojaAberta) {
+      g.fillStyle = 'rgba(10,4,24,.84)'; g.fillRect(0, 0, W, H);
+      texto('LOJA DO KUIM', W / 2, 300, 54, '#ffd84d');
+      texto(`você tem ${moedasPegas} moedas`, W / 2, 352, 26, '#fff');
+      const opcoes = [['SAIR', '◀', '', '#5b4a8a'], ['+20 BALAS', '⚔', `${PRECO_BALAS} 🪙`, '#2a6fd6'], [kuim.terno ? 'JÁ É SEU' : 'TERNO E BIGODE', '⤒', `${PRECO_TERNO} 🪙`, '#ff3d8b']];
+      opcoes.forEach(([txt, tecla, preco, cor], i) => {
+        const bx = 16 + i * (W - 32) / 3, bw = (W - 32) / 3 - 10;
+        g.fillStyle = cor; g.beginPath(); g.roundRect(bx, 500, bw, 230, 18); g.fill();
+        const linhas = txt.split(' ');
+        if (txt === 'TERNO E BIGODE') { texto('TERNO', bx + bw / 2, 560, 22, '#fff'); texto('E BIGODE', bx + bw / 2, 588, 22, '#fff'); }
+        else texto(txt, bx + bw / 2, 574, linhas.length > 1 ? 22 : 26, '#fff');
+        if (preco) texto(preco, bx + bw / 2, 640, 26, '#ffd84d');
+        texto(tecla, bx + bw / 2, 700, 26, '#fff');
+      });
     }
     if (desafio && desafio.estado === 'escolha') {
       g.fillStyle = 'rgba(10,4,24,.82)'; g.fillRect(0, 0, W, H);
@@ -548,6 +676,21 @@
         g.fillStyle = '#ff5a1f'; g.beginPath(); g.roundRect(x - 70, CHAO - 190, 140, 80, 12); g.fill();
         texto('DESAFIO', x, CHAO - 158, 24, '#fff'); texto('🔥 250 🪙', x, CHAO - 126, 22, '#ffd84d');
       }
+    }
+    for (const e of espinhos) {
+      const x = e.x - cam; if (x > W || x + e.w * 26 < 0) continue;
+      for (let k = 0; k < e.w; k++) {
+        g.fillStyle = '#d9d4ec'; g.beginPath(); g.moveTo(x + k * 26, CHAO); g.lineTo(x + k * 26 + 13, CHAO - 30); g.lineTo(x + k * 26 + 26, CHAO); g.fill();
+        g.fillStyle = '#8f86b3'; g.beginPath(); g.moveTo(x + k * 26 + 13, CHAO - 30); g.lineTo(x + k * 26 + 26, CHAO); g.lineTo(x + k * 26 + 15, CHAO); g.fill();
+      }
+    }
+    for (const l of lojas) {
+      const x = l.x - cam; if (x < -160 || x > W + 160) continue;
+      g.fillStyle = '#7a4a1e'; g.fillRect(x - 70, CHAO - 120, 12, 120); g.fillRect(x + 58, CHAO - 120, 12, 120);
+      g.fillStyle = '#5b3a1a'; g.fillRect(x - 80, CHAO - 50, 160, 50);
+      for (let k = 0; k < 6; k++) { g.fillStyle = k % 2 ? '#fff' : '#ff3d8b'; g.fillRect(x - 84 + k * 28, CHAO - 150, 28, 34); }
+      texto('LOJA', x, CHAO - 160, 30, '#ffd84d');
+      texto('🎩', x, CHAO - 66, 30, '#fff');
     }
     for (const m of moedas) {
       if (m.pega) continue; const x = m.x - cam; if (x < -20 || x > W + 20) continue;
