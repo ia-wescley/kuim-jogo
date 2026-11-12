@@ -4,6 +4,9 @@
 // (@OtseniOfical, com o boss de @lovepets5492: moeda deixa a espada mais forte) e o desafio "chão é lava" (@Arthurwicthoff).
 // Dia 2 (11/11/2026): barra de vida de 100 e animação de morte (@Num-sei-0 e @ashfarmadordeaura), espinhos no chão
 // (pedido 2 dias seguidos) e a loja do Kuim com terno e bigode por 600 moedas e munição (@Vitin-d6w).
+// Dia 3 (12/11/2026): conquistas (@curioziudo), chefão secreto Esqueleto com 750 de vida e 3 flechas de 20
+// que acorda quando alguém acha a passagem secreta (@Vitin-d6w, com o esqueleto de @ashfarmadordeaura)
+// e o modo hardcore: moeda vale 2, todo dano é 80 e a cada minuto o jogo acelera; 10 minutos vivo vence (@Pyetrool_Ofc).
 (() => {
   'use strict';
   const W = 540, H = 960;
@@ -13,6 +16,8 @@
   const DEMO = params.has('demo');            // ?demo=1: o bot joga sozinho (usado para gravar o vídeo)
   const IR = params.get('ir') || '';
   const LIMPO = params.has('limpo');          // ?limpo=1: sem textos no meio da tela (clipes que ficam atrás das cartelas do vídeo)          // atalho para gravar: parede | lava | chefe
+  const HARDCORE = params.has('hardcore');    // ?hardcore=1: modo hardcore (ideia de @Pyetrool_Ofc)
+  const QUASE = params.has('quase');          // ?quase=1: chefão começa quase morto (só para gravar o final da luta)
   const SEMENTE = Number(params.get('seed') || (DEMO ? 7 : Date.now() % 100000));
 
   // ---------------------------------------------------------------- aleatório com semente
@@ -27,6 +32,7 @@
   const CHEFE_VIDA = 550;
   const VIDA_MAX = 100, DANO_ESPINHO = 20, DANO_CHEFE = 20;
   const PRECO_TERNO = 600, PRECO_BALAS = 60;
+  const ESQ_VIDA = 750, DANO_FLECHA = 20, DANO_HARDCORE = 80, HARDCORE_META = 600;
 
   // ---------------------------------------------------------------- mundo
   const plataformas = []; // {x, y, w, chao?, lava?, pilar?, segredo?}
@@ -38,7 +44,7 @@
   const BLOCO_SEGREDO = IR === 'parede' ? 3 : 4 + Math.floor(rnd() * 4);
   const BLOCO_PLACA = IR === 'lava' ? 2 : IR ? -1 : 11;
   const BLOCO_LOJA = IR === 'loja' ? 1 : IR ? -1 : 7;
-  const pendente = IR === 'chefe' ? ['pedestal', 'arena', 'arena'] : [];
+  const pendente = IR === 'chefe' ? ['pedestal', 'arena', 'vazio'] : IR === 'esqueleto' ? ['pedestal', 'esqueleto', 'vazio'] : [];
   let desafio = null;     // {x, estado: espera|escolha|ativo|feito|falhou|passou, t}
   let chefe = null;
 
@@ -59,13 +65,21 @@
     const x0 = fimGerado, idx = blocoN++;
     fimGerado += BLOCO;
     if (pendente.length) {
-      const t = pendente.shift();
+      const t = pendente[0];
+      if ((t === 'arena' || t === 'esqueleto') && chefe && !chefe.morto) { chaoCheio(x0); moedaChao(x0 + 270); return; } // espera o chefão atual cair
+      pendente.shift();
       chaoCheio(x0);
       if (t === 'pedestal') { itens.push({x: x0 + 270, y: CHAO - 70, tipo: 'espada', pego: false}); moedaChao(x0 + 120); moedaChao(x0 + 420); }
-      if (t === 'arena' && !chefe) {
+      if (t === 'arena') {
         const ini = x0 + 270;
-        chefe = {arenaIni: ini, x: ini + 420, y: CHAO - 80, r: 80, vx: 0, vy: 0, vida: CHEFE_VIDA, ativo: false, morto: false, t: 1.2, flash: 0, noChao: true, esticar: 0};
+        chefe = {tipo: 'bolotao', nome: 'BOLOTÃO', vidaMax: CHEFE_VIDA, arenaIni: ini, x: ini + 420, y: CHAO - 80, r: 80, vx: 0, vy: 0, vida: CHEFE_VIDA, ativo: false, morto: false, t: 1.2, flash: 0, noChao: true, esticar: 0};
       }
+      if (t === 'esqueleto') {
+        // chefão secreto (ideia de @Vitin-d6w e @ashfarmadordeaura): fica de longe e solta 3 flechas seguidas
+        const ini = x0 + 270;
+        chefe = {tipo: 'esqueleto', nome: 'ESQUELETO', vidaMax: ESQ_VIDA, arenaIni: ini, x: ini + 400, y: CHAO - 75, r: 55, vx: 0, vy: 0, vida: ESQ_VIDA, ativo: false, morto: false, t: 1.6, flash: 0, noChao: true, esticar: 0, olhar: -1, serie: 0, tiroT: 0, arco: 0};
+      }
+      if (chefe && QUASE && !chefe.ativo) chefe.vida = Math.round(chefe.vidaMax * 0.12);
       return;
     }
     if (geraModo === 'lava') {
@@ -131,10 +145,36 @@
   // ---------------------------------------------------------------- jogador
   const kuim = {x: 120, y: CHAO - 60, vx: 0, vy: 0, kb: 0, r: 30, noChao: false, olhar: 1, piscar: 0, esticar: 0, golpe: 0, inv: 0, vida: IR === 'morte' ? 20 : VIDA_MAX, morto: 0, giro: 0, terno: false};
   let lojaAberta = null, botLoja = 0, mortes = 0;
-  let moedasPegas = IR === 'loja' && DEMO ? PRECO_TERNO + 40 : 0, cam = 0, tempo = 0, balas = IR === 'chefe' && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
-  const particulas = [], tiros = [], avisos = [], numeros = [];
+  let moedasPegas = IR === 'loja' && DEMO ? PRECO_TERNO + 40 : IR === 'esqueleto' && DEMO ? 400 : 0, cam = 0, tempo = 0, balas = (IR === 'chefe' || IR === 'esqueleto') && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
+  const particulas = [], tiros = [], avisos = [], numeros = [], flechas = [];
+  let acordouT = 0, espetadas = 0, hcT = 0, hcVenceu = false;
   const placar = document.getElementById('moedas');
-  const somaMoedas = n => { moedasPegas = Math.max(0, moedasPegas + n); placar.textContent = moedasPegas; };
+  const somaMoedas = n => { moedasPegas = Math.max(0, moedasPegas + n); placar.textContent = moedasPegas; if (moedasPegas >= 100) conquista('moeda100'); };
+
+  // ---------------------------------------------------------------- conquistas (ideia de @curioziudo)
+  // Ficam só no aparelho de quem joga (localStorage); nada é enviado para lugar nenhum.
+  const CONQ = [
+    ['moeda1', 'Primeira moeda', 'pegou a 1ª moedinha'],
+    ['moeda100', 'Rico', '100 moedas no bolso'],
+    ['morte1', 'Morreu', 'a 1ª de muitas'],
+    ['espinho5', 'Almofada de alfinete', 'pisou em espinho 5 vezes'],
+    ['segredo', 'Fuçador', 'achou a passagem secreta'],
+    ['lava', 'Pé de amianto', 'venceu o chão é lava'],
+    ['terno', 'Chique', 'comprou terno com bigode'],
+    ['bolotao', 'Estourou o Bolotão', 'derrotou o 1º chefão'],
+    ['esqueleto', 'Caçador de ossos', 'derrotou o chefão secreto'],
+    ['hardcore', 'Hardcore de verdade', '10 minutos vivo no hardcore'],
+  ];
+  let feitas = new Set();
+  if (!DEMO) { try { feitas = new Set(JSON.parse(localStorage.getItem('kuim-conquistas') || '[]')); } catch (e) { /* sem storage */ } }
+  const toasts = [];
+  function conquista(id) {
+    if (feitas.has(id)) return;
+    feitas.add(id);
+    const c = CONQ.find(x => x[0] === id); if (!c) return;
+    toasts.push({nome: c[1], sub: c[2], t: 3.2});
+    if (!DEMO) { try { localStorage.setItem('kuim-conquistas', JSON.stringify([...feitas])); } catch (e) { /* sem storage */ } }
+  }
   placar.textContent = moedasPegas;
   const aviso = (txt, cor = '#ffd84d', sub = '') => { avisos.length = 0; avisos.push({txt, sub, cor, t: 2.4}); };
 
@@ -171,6 +211,7 @@
   // ---------------------------------------------------------------- vida, espinhos e morte (ideias de @Num-sei-0 e @ashfarmadordeaura)
   function dano(n, lado) {
     if (kuim.morto > 0 || kuim.inv > 0) return;
+    if (HARDCORE) n = DANO_HARDCORE; // no hardcore todo dano é 80
     kuim.vida = Math.max(0, kuim.vida - n); kuim.inv = 0.9; tremor = 5;
     kuim.kb = (lado || -kuim.olhar) * 420; kuim.vy = -620; kuim.noChao = false;
     numeros.push({x: kuim.x, y: kuim.y - 50, txt: '-' + n + ' ❤', vida: 0.8});
@@ -178,6 +219,7 @@
   }
   function morrer() {
     kuim.morto = 2.6; kuim.vy = -900; kuim.kb = 0; kuim.vx = 0; kuim.giro = 0; mortes++; tremor = 10;
+    conquista('morte1'); if (HARDCORE && !hcVenceu) hcT = 0; // no hardcore, morreu = o relógio volta pro zero
     for (let i = 0; i < 3; i++) brilho(kuim.x, kuim.y, '#ff3d8b');
   }
   function renascer() {
@@ -194,7 +236,7 @@
     if (oque === 'terno') {
       if (kuim.terno) return aviso('Já tá de terno', '#c9b8ff');
       if (moedasPegas < PRECO_TERNO) return aviso('Pobre demais', '#ff5a1f', `o terno custa ${PRECO_TERNO} moedas`);
-      somaMoedas(-PRECO_TERNO); kuim.terno = true; aviso('KUIM DE TERNO!', '#ffd84d', 'com bigode e tudo');
+      somaMoedas(-PRECO_TERNO); kuim.terno = true; conquista('terno'); aviso('KUIM DE TERNO!', '#ffd84d', 'com bigode e tudo');
       for (let i = 0; i < 5; i++) brilho(kuim.x + entre(-60, 60), kuim.y - entre(0, 80), '#ffd84d');
     } else {
       if (moedasPegas < PRECO_BALAS) return aviso('Pobre demais', '#ff5a1f', `as balas custam ${PRECO_BALAS} moedas`);
@@ -218,7 +260,7 @@
     for (const p of plataformas) p.lava = false; // a lava esfria
     const X = Math.round(cam + W + 60);
     if (X < fimGerado) cortarMundo(X);
-    pendente.push('pedestal', 'arena', 'arena');
+    pendente.push('pedestal', 'arena', 'vazio');
   }
 
   // ---------------------------------------------------------------- bot do modo demo
@@ -242,6 +284,11 @@
       kuim.olhar = Math.sign(d) || 1;
       if (balas > 0 ? rnd() < 0.25 : (dist < 130 && kuim.golpe <= 0)) ataquePedido = true;
       if (kuim.noChao && !chefe.noChao && dist < 220 && rnd() < 0.05) puloPedido = true;
+      if (chefe.tipo === 'esqueleto' && kuim.noChao) {
+        // desvia das flechas pulando
+        const fl = flechas.find(f => Math.sign(f.vx) === Math.sign(kuim.x - f.x) && Math.abs(f.x - kuim.x) < 105);
+        if (fl) { puloPedido = true; botPulo = 0.3; }
+      }
       return;
     }
     if (!kuim.noChao) return;
@@ -328,7 +375,11 @@
     }
     // lados dos pilares (a parede falsa deixa passar)
     for (const p of plataformas) {
-      if (p.segredo && !p.achado && kuim.x > p.x + 10 && kuim.x < p.x + p.w - 10 && kuim.y > p.y) { p.achado = true; botParado = 1.6; }
+      if (p.segredo && !p.achado && kuim.x > p.x + 10 && kuim.x < p.x + p.w - 10 && kuim.y > p.y) {
+        p.achado = true; botParado = 1.6; conquista('segredo');
+        if (!temEspada) pendente.push('pedestal');
+        pendente.push('esqueleto', 'vazio'); acordouT = 3.2; // achou a passagem: o chefão secreto acorda
+      }
       if (!p.pilar || p.segredo) continue;
       if (kuim.y + kuim.r > p.y + 6 && kuim.x + kuim.r > p.x && kuim.x - kuim.r < p.x + p.w) {
         kuim.x = kuim.x < p.x + p.w / 2 ? p.x - kuim.r : p.x + p.w + kuim.r; kuim.vx = 0; kuim.kb = 0;
@@ -343,10 +394,13 @@
     }
 
     for (const e of espinhos) {
-      if (kuim.x + kuim.r * 0.6 > e.x && kuim.x - kuim.r * 0.6 < e.x + e.w * 26 && kuim.y + kuim.r > CHAO - 22) { dano(DANO_ESPINHO, -1); break; }
+      if (kuim.x + kuim.r * 0.6 > e.x && kuim.x - kuim.r * 0.6 < e.x + e.w * 26 && kuim.y + kuim.r > CHAO - 22) {
+        if (kuim.inv <= 0 && kuim.morto <= 0 && ++espetadas >= 5) conquista('espinho5');
+        dano(DANO_ESPINHO, -1); break;
+      }
     }
     for (const m of moedas) {
-      if (!m.pega && Math.hypot(m.x - kuim.x, m.y - kuim.y) < kuim.r + 16) { m.pega = true; somaMoedas(1); brilho(m.x, m.y, '#ffd84d'); }
+      if (!m.pega && Math.hypot(m.x - kuim.x, m.y - kuim.y) < kuim.r + 16) { m.pega = true; somaMoedas(HARDCORE ? 2 : 1); conquista('moeda1'); brilho(m.x, m.y, '#ffd84d'); }
     }
     for (const it of itens) {
       if (it.pego || Math.abs(it.x - kuim.x) > 40 || Math.abs(it.y - kuim.y) > 60) continue;
@@ -371,12 +425,24 @@
       if (chefe && chefe.ativo && !chefe.morto && Math.hypot(t.x - chefe.x, t.y - chefe.y) < chefe.r) { t.vida = 0; bater(15, t.x, t.y); }
     }
     for (let i = tiros.length - 1; i >= 0; i--) if (tiros[i].vida <= 0) tiros.splice(i, 1);
+    // flechas do esqueleto: 20 de vida cada, só pulando para desviar
+    for (const f of flechas) {
+      f.x += f.vx * dt; f.vida -= dt;
+      if (kuim.morto <= 0 && Math.abs(f.x - kuim.x) < kuim.r + 14 && Math.abs(f.y - kuim.y) < kuim.r + 2) { f.vida = 0; dano(DANO_FLECHA, Math.sign(f.vx)); }
+    }
+    for (let i = flechas.length - 1; i >= 0; i--) if (flechas[i].vida <= 0) flechas.splice(i, 1);
+    if (acordouT > 0) { acordouT -= dt; if (acordouT <= 0) aviso('ALGO ACORDOU...', '#e9e4d4', 'um chefão secreto vem aí'); }
+    // modo hardcore: 10 minutos vivo vence
+    if (HARDCORE && !hcVenceu) {
+      hcT += dt / ritmo();
+      if (hcT >= HARDCORE_META) { hcVenceu = true; somaMoedas(1000); conquista('hardcore'); aviso('VENCEU O HARDCORE!', '#ff3d3d', '+1000 moedas'); }
+    }
 
     // desafio da lava: 1 minuto sem encostar no chão
     if (desafio && desafio.estado === 'ativo') {
       desafio.t -= dt;
       if (desafio.t <= 0) {
-        desafio.estado = 'feito'; somaMoedas(DESAFIO_PREMIO);
+        desafio.estado = 'feito'; somaMoedas(DESAFIO_PREMIO); conquista('lava');
         aviso('DESAFIO CUMPRIDO!', '#ffd84d', `+${DESAFIO_PREMIO} moedas`);
         for (let i = 0; i < 4; i++) brilho(kuim.x + entre(-80, 80), kuim.y - entre(0, 120), '#ffd84d');
         depoisDoDesafio();
@@ -411,20 +477,27 @@
     numeros.push({x, y: y - 30, txt: '-' + dano, vida: 0.7});
     brilho(x, y, '#ffffff');
     if (chefe.vida <= 0) {
-      chefe.morto = true; somaMoedas(100); tremor = 12;
-      for (let i = 0; i < 8; i++) brilho(chefe.x + entre(-60, 60), chefe.y + entre(-60, 60), i % 2 ? '#ff3d8b' : '#ffd84d');
-      aviso('CHEFÃO DERROTADO!', '#ffd84d', '+100 moedas');
+      const esq = chefe.tipo === 'esqueleto', premio = esq ? 150 : 100;
+      chefe.morto = true; somaMoedas(premio); tremor = 12; flechas.length = 0;
+      for (let i = 0; i < 8; i++) brilho(chefe.x + entre(-60, 60), chefe.y + entre(-60, 60), esq ? (i % 2 ? '#e9e4d4' : '#ffd84d') : (i % 2 ? '#ff3d8b' : '#ffd84d'));
+      conquista(chefe.tipo);
+      aviso(esq ? 'ESQUELETO DESMONTADO!' : 'CHEFÃO DERROTADO!', '#ffd84d', `+${premio} moedas`);
     }
   }
   function atualizarChefe(dt) {
     if (!chefe || chefe.morto) return;
     const c = chefe;
-    if (!c.ativo && kuim.x > c.arenaIni + 150) { c.ativo = true; aviso('CHEFÃO: BOLOTÃO', '#ff3d8b', `${CHEFE_VIDA} de vida`); }
+    if (!c.ativo && kuim.x > c.arenaIni + 150) {
+      c.ativo = true;
+      if (c.tipo === 'esqueleto') aviso('CHEFÃO SECRETO!', '#e9e4d4', `esqueleto com ${ESQ_VIDA} de vida`);
+      else aviso('CHEFÃO: BOLOTÃO', '#ff3d8b', `${CHEFE_VIDA} de vida`);
+    }
     c.flash -= dt;
     if (!c.ativo) return;
+    if (c.tipo === 'esqueleto') return atualizarEsqueleto(c, dt);
     c.t -= dt;
     if (c.noChao && c.t <= 0) {
-      const raiva = 1 - c.vida / CHEFE_VIDA;
+      const raiva = 1 - c.vida / c.vidaMax;
       c.vx = Math.sign(kuim.x - c.x) * (200 + raiva * 120); c.vy = -(820 + raiva * 200); c.noChao = false;
       c.t = 1.5 - raiva * 0.6;
     }
@@ -437,6 +510,31 @@
     c.esticar *= Math.pow(0.003, dt);
     // encostou no Kuim
     if (Math.hypot(c.x - kuim.x, c.y - kuim.y) < c.r + kuim.r - 6 && kuim.inv <= 0) {
+      const lado = Math.sign(kuim.x - c.x) || -1;
+      kuim.kb = lado * 520; kuim.vy = -520; kuim.noChao = false; kuim.inv = 0.8;
+      if (temEspada && escudoT <= 0) { escudoT = 3; brilho(kuim.x + lado * -30, kuim.y, '#4dd2ff'); numeros.push({x: kuim.x, y: kuim.y - 50, txt: 'DEFENDEU!', vida: 0.8}); }
+      else { kuim.inv = 0; dano(DANO_CHEFE, lado); }
+    }
+  }
+  function atualizarEsqueleto(c, dt) {
+    const d = kuim.x - c.x, dist = Math.abs(d);
+    c.olhar = Math.sign(d) || -1;
+    const raiva = 1 - c.vida / c.vidaMax;
+    // arqueiro: gosta de ficar longe
+    const anda = dist < 200 ? -c.olhar : dist > 330 ? c.olhar : 0;
+    c.x += anda * 80 * dt; c.andando = anda !== 0;
+    c.x = Math.min(Math.max(c.x, c.arenaIni + c.r), c.arenaIni + W - c.r);
+    c.t -= dt; c.arco -= dt;
+    if (c.t <= 0 && c.serie <= 0) { c.serie = 3; c.tiroT = 0.35; c.t = 2.6 - raiva * 0.9; }
+    if (c.serie > 0) {
+      c.tiroT -= dt;
+      if (c.tiroT <= 0) {
+        flechas.push({x: c.x + c.olhar * 50, y: CHAO - 32, vx: c.olhar * (420 + raiva * 120), vida: 2.4});
+        c.serie--; c.tiroT = 0.3; c.arco = 0.18;
+      }
+    }
+    // encostou no Kuim
+    if (Math.hypot(c.x - kuim.x, c.y - kuim.y) < c.r + kuim.r - 4 && kuim.inv <= 0) {
       const lado = Math.sign(kuim.x - c.x) || -1;
       kuim.kb = lado * 520; kuim.vy = -520; kuim.noChao = false; kuim.inv = 0.8;
       if (temEspada && escudoT <= 0) { escudoT = 3; brilho(kuim.x + lado * -30, kuim.y, '#4dd2ff'); numeros.push({x: kuim.x, y: kuim.y - 50, txt: 'DEFENDEU!', vida: 0.8}); }
@@ -556,9 +654,44 @@
     if (temEspada) { g.globalAlpha = escudoT > 0 ? 0.3 : 1; desenharEscudo(-kuim.olhar * 30, 6, 0.9); g.globalAlpha = 1; }
     g.restore();
   }
+  function desenharEsqueleto(c, x) {
+    const osso = c.flash > 0 ? '#ffffff' : '#ece6d2', escuro = '#1a0d2e';
+    g.save(); g.translate(x, c.y);
+    g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(0, 76, 46, 8, 0, 0, 7); g.fill();
+    g.strokeStyle = osso; g.lineCap = 'round';
+    const passo = c.andando ? Math.sin(tempo * 9) * 7 : 0;
+    g.lineWidth = 9; g.beginPath(); g.moveTo(-12, 30); g.lineTo(-16 + passo, 72); g.moveTo(12, 30); g.lineTo(16 - passo, 72); g.stroke();
+    g.lineWidth = 8; g.beginPath(); g.moveTo(0, -26); g.lineTo(0, 32); g.stroke();
+    g.lineWidth = 5; for (let k = 0; k < 4; k++) { g.beginPath(); g.ellipse(0, -14 + k * 11, 25 - k * 3, 5, 0, 0, 7); g.stroke(); }
+    g.fillStyle = osso; g.beginPath(); g.ellipse(0, 30, 20, 8, 0, 0, 7); g.fill();
+    // braço segurando o arco virado para o Kuim
+    const o = c.olhar || -1;
+    g.lineWidth = 7; g.beginPath(); g.moveTo(0, -20); g.lineTo(o * 36, -12); g.moveTo(0, -20); g.lineTo(o * (c.arco > 0 ? 6 : 18), -8); g.stroke();
+    g.save(); g.translate(o * 40, -12); g.scale(o, 1);
+    g.strokeStyle = '#9a5f2a'; g.lineWidth = 6; g.beginPath(); g.arc(-18, 0, 44, -1.1, 1.1); g.stroke();
+    const puxa = c.arco > 0 ? -22 : (c.serie > 0 ? -14 : 0);
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(-18 + 44 * Math.cos(1.1), -44 * Math.sin(1.1)); g.lineTo(puxa, 0); g.lineTo(-18 + 44 * Math.cos(1.1), 44 * Math.sin(1.1)); g.stroke();
+    g.restore();
+    // crânio
+    g.fillStyle = osso; g.beginPath(); g.arc(0, -60, 32, 0, 7); g.fill(); g.beginPath(); g.roundRect(-18, -42, 36, 18, 5); g.fill();
+    g.fillStyle = escuro; g.beginPath(); g.arc(-12, -62, 9, 0, 7); g.arc(12, -62, 9, 0, 7); g.fill();
+    g.fillStyle = '#ff3d3d'; g.beginPath(); g.arc(-12 + o * 2, -61, 3.5, 0, 7); g.arc(12 + o * 2, -61, 3.5, 0, 7); g.fill();
+    g.fillStyle = escuro; g.beginPath(); g.moveTo(0, -50); g.lineTo(-5, -42); g.lineTo(5, -42); g.fill();
+    for (let k = -2; k <= 2; k++) g.fillRect(k * 6 - 1, -35, 2, 9);
+    g.restore();
+  }
+  function desenharFlecha(f) {
+    const x = f.x - cam, s = Math.sign(f.vx);
+    g.save(); g.translate(x, f.y); g.scale(s, 1);
+    g.strokeStyle = '#9a5f2a'; g.lineWidth = 4; g.beginPath(); g.moveTo(-34, 0); g.lineTo(14, 0); g.stroke();
+    g.fillStyle = '#d9d4ec'; g.beginPath(); g.moveTo(24, 0); g.lineTo(12, -7); g.lineTo(12, 7); g.fill();
+    g.fillStyle = '#ff3d8b'; g.beginPath(); g.moveTo(-34, 0); g.lineTo(-42, -7); g.lineTo(-28, 0); g.lineTo(-42, 7); g.fill();
+    g.restore();
+  }
   function desenharChefe() {
     if (!chefe || chefe.morto) return;
     const c = chefe, x = c.x - cam; if (x < -150 || x > W + 150) return;
+    if (c.tipo === 'esqueleto') return desenharEsqueleto(c, x);
     g.save(); g.translate(x, c.y); g.scale(1 - c.esticar * 0.15, 1 + c.esticar * 0.2);
     g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(0, c.r + 2, c.r, 10, 0, 0, 7); g.fill();
     g.fillStyle = c.flash > 0 ? '#ffffff' : '#7a2bd6'; g.beginPath(); g.ellipse(0, 0, c.r * 1.15, c.r, 0, 0, 7); g.fill();
@@ -589,20 +722,39 @@
     g.fillStyle = kuim.vida > 40 ? '#7cff9b' : '#ff3d3d'; g.beginPath(); g.roundRect(vx, vy, Math.max(0, vw * kuim.vida / VIDA_MAX), 20, 6); g.fill();
     texto(`❤ ${kuim.vida}`, vx + vw / 2, vy + 17, 18, '#fff');
     let y = 172;
+    if (HARDCORE) {
+      const t = Math.floor(hcT), r = ritmo();
+      texto(hcVenceu ? '💀 HARDCORE VENCIDO' : `💀 ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')} / 10:00  x${r.toFixed(1)}`, 22, y, 24, '#ff3d3d', 'left'); y += 38;
+    }
     if (balas > 0) { texto(`🔫 ${balas}`, 22, y, 30, '#4dd2ff', 'left'); y += 40; }
     if (temEspada) { texto(escudoT > 0 ? '🛡️ recarregando' : '🛡️ pronto', 22, y, 24, escudoT > 0 ? '#9a8fbf' : '#4dd2ff', 'left'); y += 36; }
-    if (LIMPO) { for (const n of numeros) { g.globalAlpha = Math.min(1, n.vida * 2); texto(n.txt, n.x - cam, n.y, 30, '#fff'); } g.globalAlpha = 1; return; }
+    if (LIMPO) { toasts.length = 0; for (const n of numeros) { g.globalAlpha = Math.min(1, n.vida * 2); texto(n.txt, n.x - cam, n.y, 30, '#fff'); } g.globalAlpha = 1; return; }
     if (desafio && desafio.estado === 'ativo') {
       const t = Math.max(0, Math.ceil(desafio.t));
       texto('CHÃO É LAVA', W / 2, 250, 40, '#ff5a1f');
       texto(`0:${String(t).padStart(2, '0')}`, W / 2, 310, 58, '#ffd84d');
     }
     if (chefe && chefe.ativo && !chefe.morto) {
-      const bw = 380, bx = (W - bw) / 2, by = 230;
-      texto('BOLOTÃO', W / 2, by - 12, 30, '#ff3d8b');
+      const bw = 380, bx = (W - bw) / 2, by = 230, cor = chefe.tipo === 'esqueleto' ? '#e9e4d4' : '#ff3d8b';
+      texto(chefe.nome, W / 2, by - 12, 30, cor);
       g.fillStyle = '#120a22'; g.fillRect(bx - 4, by - 4, bw + 8, 30);
-      g.fillStyle = '#ff3d8b'; g.fillRect(bx, by, bw * chefe.vida / CHEFE_VIDA, 22);
-      texto(`${chefe.vida} / ${CHEFE_VIDA}`, W / 2, by + 19, 18, '#fff');
+      g.fillStyle = cor; g.fillRect(bx, by, bw * chefe.vida / chefe.vidaMax, 22);
+      texto(`${chefe.vida} / ${chefe.vidaMax}`, W / 2, by + 19, 18, '#fff');
+    }
+    const ct = toasts[0];
+    if (ct) {
+      // aviso de conquista (desce do topo)
+      const ty = (chefe && chefe.ativo && !chefe.morto) || (desafio && desafio.estado === 'ativo') ? 262 : 240;
+      const ent = Math.min(1, (3.2 - ct.t) * 5), sai = Math.min(1, ct.t * 3);
+      g.globalAlpha = Math.max(0, Math.min(ent, sai));
+      g.save(); g.translate(0, (1 - ent) * -30);
+      g.fillStyle = 'rgba(18,10,34,.92)'; g.beginPath(); g.roundRect(60, ty, W - 120, 78, 16); g.fill();
+      g.strokeStyle = '#ffd84d'; g.lineWidth = 4; g.stroke();
+      texto('🏆', 100, ty + 52, 36, '#ffd84d');
+      texto('CONQUISTA!', 140, ty + 26, 18, '#ffd84d', 'left');
+      texto(ct.nome, 140, ty + 52, ct.nome.length > 16 ? 22 : 26, '#fff', 'left');
+      texto(ct.sub, 140, ty + 71, 15, '#c9b8ff', 'left');
+      g.restore(); g.globalAlpha = 1;
     }
     for (const n of numeros) { g.globalAlpha = Math.min(1, n.vida * 2); texto(n.txt, n.x - cam, n.y, 30, '#fff'); }
     g.globalAlpha = 1;
@@ -700,6 +852,7 @@
     }
     for (const it of itens) if (!it.pego) desenharItem(it);
     desenharChefe();
+    for (const f of flechas) desenharFlecha(f);
     for (const t of tiros) { g.fillStyle = '#ffd84d'; g.beginPath(); g.arc(t.x - cam, t.y, 8, 0, 7); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(t.x - cam, t.y, 4, 0, 7); g.fill(); }
     for (const p of particulas) { g.globalAlpha = Math.max(0, p.vida * 2.5); g.fillStyle = p.cor; g.fillRect(p.x - cam, p.y, p.t, p.t); }
     g.globalAlpha = 1;
@@ -710,9 +863,12 @@
 
   // ---------------------------------------------------------------- laço
   let antes = performance.now();
+  // hardcore: a cada minuto vivo o jogo fica 10% mais rápido (até 1,6x)
+  function ritmo() { return HARDCORE && !hcVenceu ? Math.min(1.6, 1 + 0.1 * Math.floor(hcT / 60)) : 1; }
   function quadro(agora) {
     const dt = Math.min(0.033, (agora - antes) / 1000); antes = agora;
-    atualizar(dt); desenhar(); requestAnimationFrame(quadro);
+    if (toasts.length) { toasts[0].t -= dt; if (toasts[0].t <= 0) toasts.shift(); }
+    atualizar(dt * ritmo()); desenhar(); requestAnimationFrame(quadro);
   }
   requestAnimationFrame(quadro);
 
@@ -729,7 +885,16 @@
     li.append(b, t, q); lista.append(li);
   }
   const painel = document.getElementById('painel'), cofre = document.getElementById('cofre');
-  document.getElementById('btnEp').onclick = () => { painel.hidden = false; };
+  document.getElementById('btnEp').onclick = () => {
+    painel.hidden = false;
+    const lc = document.getElementById('conqs'); lc.textContent = '';
+    for (const [id, nome, sub] of CONQ) item(lc, (feitas.has(id) ? '🏆 ' : '🔒 ') + nome, sub);
+  };
+  const bh = document.getElementById('btnHard');
+  if (bh) {
+    if (HARDCORE) bh.classList.add('on');
+    bh.onclick = () => { const q = new URLSearchParams(location.search); if (HARDCORE) q.delete('hardcore'); else q.set('hardcore', '1'); location.search = q.toString(); };
+  }
   document.getElementById('btnCofre').onclick = () => { cofre.hidden = false; abrirCofre(); };
   document.querySelectorAll('.fechar').forEach(b => { b.onclick = () => { painel.hidden = true; cofre.hidden = true; }; });
 

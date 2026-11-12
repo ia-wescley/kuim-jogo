@@ -31,3 +31,6 @@ html, body { margin: 0; height: 100%; background: #07040f; color: var(--texto); 
 #cApoios, #cGastos { padding-left: 1.2em; font-size: .9em; }
 .pix { display: block; text-align: center; margin: .8em 0 .3em; padding: .7em; border-radius: 12px; background: #32bcad; color: #fff; font-weight: 800; text-decoration: none; }
 .mini { font-size: .75em; text-align: center; }
+#btnHard { position: absolute; top: 20%; right: 4%; font-size: clamp(16px, 3vh, 26px); background: rgba(0,0,0,.45); border: 2px solid #ff3d3d; color: #fff; border-radius: 12px; padding: .2em .45em; cursor: pointer; }
+#btnHard.on { background: #ff3d3d; }
+#conqs { list-style: none; padding-left: 0; }
