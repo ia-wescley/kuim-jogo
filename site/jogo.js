@@ -7,6 +7,9 @@
 // Dia 3 (12/11/2026): conquistas (@curioziudo), chefão secreto Esqueleto com 750 de vida e 3 flechas de 20
 // que acorda quando alguém acha a passagem secreta (@Vitin-d6w, com o esqueleto de @ashfarmadordeaura)
 // e o modo hardcore: moeda vale 2, todo dano é 80 e a cada minuto o jogo acelera; 10 minutos vivo vence (@Pyetrool_Ofc).
+// Dia 4 (13/11/2026): zumbis andando pelo mapa (@Zhilak_9918, com os "inimigos normais" de @Vitin-d6w), o chefão
+// Mago Gigante, que joga magias e faz espinhos brotarem do chão (@Vitin-d6w, parte 2) e o chapeleiro, um cara que
+// joga um chapéu estiloso pro Kuim (@aprenda_comigocubo).
 (() => {
   'use strict';
   const W = 540, H = 960;
@@ -33,6 +36,7 @@
   const VIDA_MAX = 100, DANO_ESPINHO = 20, DANO_CHEFE = 20;
   const PRECO_TERNO = 600, PRECO_BALAS = 60;
   const ESQ_VIDA = 750, DANO_FLECHA = 20, DANO_HARDCORE = 80, HARDCORE_META = 600;
+  const MAGO_VIDA = 1000, DANO_MAGIA = 20, DANO_ZUMBI = 20, ZUMBI_VIDA = 30, ZUMBI_PREMIO = 3;
 
   // ---------------------------------------------------------------- mundo
   const plataformas = []; // {x, y, w, chao?, lava?, pilar?, segredo?}
@@ -40,11 +44,14 @@
   const itens = [];       // {x, y, tipo: 'arma'|'espada', pego}
   const espinhos = [];    // {x, w} no chão
   const lojas = [];       // {x, usada}
+  const zumbis = [];      // {x, dir, min, max, vida, morto, flash}
+  let chapeleiro = null, chapeuVoando = null; // o cara que joga o chapéu (ideia de @aprenda_comigocubo)
   let fimGerado = 0, blocoN = 0, geraModo = 'normal';
-  const BLOCO_SEGREDO = IR === 'parede' ? 3 : 4 + Math.floor(rnd() * 4);
+  const BLOCO_SEGREDO = IR === 'parede' ? 3 : 4 + Math.floor(rnd() * 3);
+  const BLOCO_CHAPEU = IR === 'chapeu' ? 1 : IR ? -1 : 2;
   const BLOCO_PLACA = IR === 'lava' ? 2 : IR ? -1 : 11;
   const BLOCO_LOJA = IR === 'loja' ? 1 : IR ? -1 : 7;
-  const pendente = IR === 'chefe' ? ['pedestal', 'arena', 'vazio'] : IR === 'esqueleto' ? ['pedestal', 'esqueleto', 'vazio'] : [];
+  const pendente = IR === 'chefe' ? ['pedestal', 'arena', 'vazio'] : IR === 'esqueleto' ? ['pedestal', 'esqueleto', 'vazio'] : IR === 'mago' ? ['pedestal', 'mago', 'vazio'] : [];
   let desafio = null;     // {x, estado: espera|escolha|ativo|feito|falhou|passou, t}
   let chefe = null;
 
@@ -61,12 +68,17 @@
       for (let k = 0; k < 3; k++) moedas.push({x: x + w / 2 + (k - 1) * 34, y: y - 45, pega: false});
     }
   }
+  // zumbis (ideia de @Zhilak_9918): andam num trecho de chão e correm atrás do Kuim
+  function zumbiEm(idx, a, b) {
+    if (idx < 2 || IR === 'espinho' || IR === 'morte' || b - a < 110 || !(IR === 'zumbi' || rnd() < 0.85)) return;
+    zumbis.push({x: entre(Math.max(a + 40, b - 220), b), dir: -1, min: a, max: b, vida: ZUMBI_VIDA, morto: false, flash: 0});
+  }
   function gerarBloco() {
     const x0 = fimGerado, idx = blocoN++;
     fimGerado += BLOCO;
     if (pendente.length) {
       const t = pendente[0];
-      if ((t === 'arena' || t === 'esqueleto') && chefe && !chefe.morto) { chaoCheio(x0); moedaChao(x0 + 270); return; } // espera o chefão atual cair
+      if ((t === 'arena' || t === 'esqueleto' || t === 'mago') && chefe && !chefe.morto) { chaoCheio(x0); moedaChao(x0 + 270); return; } // espera o chefão atual cair
       pendente.shift();
       chaoCheio(x0);
       if (t === 'pedestal') { itens.push({x: x0 + 270, y: CHAO - 70, tipo: 'espada', pego: false}); moedaChao(x0 + 120); moedaChao(x0 + 420); }
@@ -78,6 +90,11 @@
         // chefão secreto (ideia de @Vitin-d6w e @ashfarmadordeaura): fica de longe e solta 3 flechas seguidas
         const ini = x0 + 270;
         chefe = {tipo: 'esqueleto', nome: 'ESQUELETO', vidaMax: ESQ_VIDA, arenaIni: ini, x: ini + 400, y: CHAO - 75, r: 55, vx: 0, vy: 0, vida: ESQ_VIDA, ativo: false, morto: false, t: 1.6, flash: 0, noChao: true, esticar: 0, olhar: -1, serie: 0, tiroT: 0, arco: 0};
+      }
+      if (t === 'mago') {
+        // chefão Mago Gigante (ideia de @Vitin-d6w): joga magias e faz espinhos brotarem embaixo do Kuim
+        const ini = x0 + 270;
+        chefe = {tipo: 'mago', nome: 'MAGO GIGANTE', vidaMax: MAGO_VIDA, arenaIni: ini, base: ini + 405, x: ini + 405, y: CHAO - 110, r: 110, vx: 0, vy: 0, vida: MAGO_VIDA, ativo: false, morto: false, t: 1.4, flash: 0, noChao: true, esticar: 0, olhar: -1, vez: 0, cajado: 0};
       }
       if (chefe && QUASE && !chefe.ativo) chefe.vida = Math.round(chefe.vidaMax * 0.12);
       return;
@@ -105,6 +122,13 @@
       moedaChao(x0 + 100);
       return;
     }
+    if (idx === BLOCO_CHAPEU) {
+      // o chapeleiro (ideia de @aprenda_comigocubo): chegou perto, ele joga um chapéu estiloso
+      chaoCheio(x0);
+      chapeleiro = {x: x0 + 330, deu: false};
+      moedaChao(x0 + 100); moedaChao(x0 + 470);
+      return;
+    }
     if (idx === BLOCO_SEGREDO) {
       // parede falsa: igual às outras, mas dá para atravessar. Dentro tem a arma e o nome de quem pediu.
       chaoCheio(x0);
@@ -116,14 +140,18 @@
       return;
     }
     // bloco normal: chão com buraco às vezes (nunca no 1º bloco) ou com um pilar no caminho
-    if (x0 > 0 && rnd() < 0.45) {
+    if (x0 > 0 && IR !== 'zumbi' && rnd() < 0.45) {
       const buraco = entre(90, 150), ini = entre(120, BLOCO - buraco - 60);
       plataformas.push({x: x0, y: CHAO, w: ini, chao: true});
       plataformas.push({x: x0 + ini + buraco, y: CHAO, w: BLOCO - ini - buraco, chao: true});
+      zumbiEm(idx, x0 + ini + buraco + 30, x0 + BLOCO - 30);
     } else {
       chaoCheio(x0);
-      if (x0 > 0 && rnd() < 0.5) plataformas.push({x: x0 + entre(150, BLOCO - 250), y: CHAO - PILAR_H, w: PILAR_W, pilar: true});
-      else if (x0 > 0 && (IR === 'espinho' || IR === 'morte' || rnd() < 0.6)) espinhos.push({x: x0 + entre(120, BLOCO - 200), w: 3 + Math.floor(rnd() * 3)}); // espinhos (pedido 2 dias seguidos)
+      if (x0 > 0 && IR !== 'zumbi' && rnd() < 0.5) { const px = x0 + entre(150, BLOCO - 250); plataformas.push({x: px, y: CHAO - PILAR_H, w: PILAR_W, pilar: true}); zumbiEm(idx, px + PILAR_W + 30, x0 + BLOCO - 30); }
+      else {
+        if (x0 > 0 && IR !== 'zumbi' && (IR === 'espinho' || IR === 'morte' || rnd() < 0.6)) espinhos.push({x: x0 + entre(120, BLOCO - 200), w: 3 + Math.floor(rnd() * 3)}); // espinhos (pedido 2 dias seguidos)
+        zumbiEm(idx, x0 + 30, x0 + BLOCO - 30);
+      }
     }
     flutuantes(x0);
     for (let k = 0; k < 2; k++) moedaChao(x0 + entre(60, BLOCO - 60));
@@ -138,16 +166,17 @@
     for (let i = itens.length - 1; i >= 0; i--) if (itens[i].x >= X) itens.splice(i, 1);
     for (let i = espinhos.length - 1; i >= 0; i--) if (espinhos[i].x + espinhos[i].w * 26 >= X) espinhos.splice(i, 1);
     for (let i = lojas.length - 1; i >= 0; i--) if (lojas[i].x >= X) lojas.splice(i, 1);
+    for (let i = zumbis.length - 1; i >= 0; i--) if (zumbis[i].max >= X) zumbis.splice(i, 1);
     fimGerado = X;
   }
   for (let i = 0; i < 4; i++) gerarBloco();
 
   // ---------------------------------------------------------------- jogador
-  const kuim = {x: 120, y: CHAO - 60, vx: 0, vy: 0, kb: 0, r: 30, noChao: false, olhar: 1, piscar: 0, esticar: 0, golpe: 0, inv: 0, vida: IR === 'morte' ? 20 : VIDA_MAX, morto: 0, giro: 0, terno: false};
+  const kuim = {x: 120, y: CHAO - 60, vx: 0, vy: 0, kb: 0, r: 30, noChao: false, olhar: 1, piscar: 0, esticar: 0, golpe: 0, inv: 0, vida: IR === 'morte' ? 20 : VIDA_MAX, morto: 0, giro: 0, terno: false, chapeu: false};
   let lojaAberta = null, botLoja = 0, mortes = 0;
-  let moedasPegas = IR === 'loja' && DEMO ? PRECO_TERNO + 40 : IR === 'esqueleto' && DEMO ? 400 : 0, cam = 0, tempo = 0, balas = (IR === 'chefe' || IR === 'esqueleto') && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
-  const particulas = [], tiros = [], avisos = [], numeros = [], flechas = [];
-  let acordouT = 0, espetadas = 0, hcT = 0, hcVenceu = false;
+  let moedasPegas = IR === 'loja' && DEMO ? PRECO_TERNO + 40 : (IR === 'esqueleto' || IR === 'mago') && DEMO ? 400 : 0, cam = 0, tempo = 0, balas = (IR === 'chefe' || IR === 'esqueleto' || IR === 'mago') && DEMO ? 20 : 0, temEspada = false, escudoT = 0, tremor = 0;
+  const particulas = [], tiros = [], avisos = [], numeros = [], flechas = [], orbes = [], magEsp = [];
+  let acordouT = 0, espetadas = 0, hcT = 0, hcVenceu = false, zumbisMortos = 0;
   const placar = document.getElementById('moedas');
   const somaMoedas = n => { moedasPegas = Math.max(0, moedasPegas + n); placar.textContent = moedasPegas; if (moedasPegas >= 100) conquista('moeda100'); };
 
@@ -164,6 +193,9 @@
     ['bolotao', 'Estourou o Bolotão', 'derrotou o 1º chefão'],
     ['esqueleto', 'Caçador de ossos', 'derrotou o chefão secreto'],
     ['hardcore', 'Hardcore de verdade', '10 minutos vivo no hardcore'],
+    ['chapeu', 'Estiloso', 'ganhou o chapéu do chapeleiro'],
+    ['zumbi10', 'Mata-zumbi', 'acabou com 10 zumbis'],
+    ['mago', 'Apagou o mago', 'derrotou o Mago Gigante'],
   ];
   let feitas = new Set();
   if (!DEMO) { try { feitas = new Set(JSON.parse(localStorage.getItem('kuim-conquistas') || '[]')); } catch (e) { /* sem storage */ } }
@@ -280,9 +312,17 @@
     if (botPulo > 0) { botPulo -= dt; tecla.pulo = true; } else tecla.pulo = false;
     if (chefe && chefe.ativo && !chefe.morto) {
       const d = chefe.x - kuim.x, dist = Math.abs(d);
-      tecla.dir = d > 0 && dist > 115; tecla.esq = d < 0 && dist > 115;
+      const mg = chefe.tipo === 'mago', longe = mg ? 150 : 115;
+      tecla.dir = d > 0 && dist > longe; tecla.esq = d < 0 && dist > longe;
+      if (mg && dist < 128) { tecla.dir = d < 0; tecla.esq = d > 0; } // não encosta no manto
       kuim.olhar = Math.sign(d) || 1;
-      if (balas > 0 ? rnd() < 0.25 : (dist < 130 && kuim.golpe <= 0)) ataquePedido = true;
+      if (balas > 0 ? rnd() < 0.25 : (dist < (mg ? 178 : 130) && kuim.golpe <= 0)) ataquePedido = true;
+      if (mg && kuim.noChao) {
+        // pula quando os espinhos mágicos vão brotar embaixo dele
+        const av = magEsp.find(m => !m.fase && m.t < 0.16 && Math.abs(m.x - kuim.x) < 85);
+        if (av) { puloPedido = true; botPulo = 0.5; }
+        return;
+      }
       if (kuim.noChao && !chefe.noChao && dist < 220 && rnd() < 0.05) puloPedido = true;
       if (chefe.tipo === 'esqueleto' && kuim.noChao) {
         // desvia das flechas pulando
@@ -291,7 +331,12 @@
       }
       return;
     }
-    if (!kuim.noChao) return;
+    if (!kuim.noChao) {
+      // sem arma, o bot mira o pisão na cabeça do zumbi
+      const za = balas === 0 && !temEspada && zumbis.find(z => !z.morto && z.x > kuim.x - 70 && z.x - kuim.x < 160);
+      if (za && kuim.vy > -250) { tecla.dir = za.x > kuim.x + 10; tecla.esq = za.x < kuim.x - 10; }
+      return;
+    }
     const sob = plataformas.find(p => !p.chao && !p.pilar && kuim.x > p.x - 6 && kuim.x < p.x + p.w + 6 && Math.abs(kuim.y + kuim.r - p.y) < 3);
     if (desafio && desafio.estado === 'ativo') {
       // simula o pulo curto e só pula quando vai cair no meio da próxima plataforma
@@ -301,6 +346,12 @@
     }
     const chaoEm = fx => plataformas.some(p => p.chao && fx > p.x && fx < p.x + p.w);
     const temChao = chaoEm(kuim.x + 45) && chaoEm(kuim.x + 85);
+    const zb = zumbis.find(z => !z.morto && z.x > kuim.x - 10 && z.x - kuim.x < 255);
+    if (zb) {
+      if (balas > 0) { if (rnd() < 0.2) ataquePedido = true; }
+      else if (temEspada) { if (zb.x - kuim.x < 92 && kuim.golpe <= 0) ataquePedido = true; }
+      else if (!sob) { puloPedido = true; botPulo = 0.16; return; } // pisão na cabeça
+    }
     const pilar = plataformas.find(p => p.pilar && !p.segredo && p.x > kuim.x && p.x - kuim.x < 90);
     if (pilar && !sob) { puloPedido = true; botPulo = 0.45; return; }
     const esp = IR !== 'morte' && espinhos.find(e => e.x > kuim.x && e.x - kuim.x < 75);
@@ -399,6 +450,30 @@
         dano(DANO_ESPINHO, -1); break;
       }
     }
+    // zumbis (ideia de @Zhilak_9918): encostou perde 20 de vida; pisão na cabeça, tiro ou espadada resolvem
+    for (const z of zumbis) {
+      if (z.morto || Math.abs(z.x - kuim.x) > 800) continue;
+      const viu = Math.abs(kuim.x - z.x) < 270;
+      if (viu) z.dir = Math.sign(kuim.x - z.x) || z.dir;
+      z.x += z.dir * (viu ? 95 : 45) * dt; z.flash -= dt;
+      if (z.x < z.min) { z.x = z.min; z.dir = 1; } else if (z.x > z.max) { z.x = z.max; z.dir = -1; }
+      if (Math.abs(z.x - kuim.x) < kuim.r + 20 && kuim.y + kuim.r > CHAO - 84) {
+        if (kuim.vy > 150 && kuim.y < CHAO - 72) { matarZumbi(z); kuim.vy = -720; kuim.noChao = false; kuim.esticar = 1; }
+        else if (kuim.inv <= 0) dano(DANO_ZUMBI, Math.sign(kuim.x - z.x) || -1);
+      }
+    }
+    // o chapeleiro joga o chapéu quando o Kuim chega perto (ideia de @aprenda_comigocubo)
+    if (chapeleiro && !chapeleiro.deu && kuim.x > chapeleiro.x - 200) { chapeleiro.deu = true; chapeuVoando = {x: chapeleiro.x, y: CHAO - 190, t: 0}; }
+    if (chapeuVoando) {
+      const c = chapeuVoando; c.t += dt; const k = Math.min(1, c.t / 0.9);
+      c.x += (kuim.x - c.x) * Math.min(1, dt * (3 + k * 16));
+      c.y = (CHAO - 190) * (1 - k) + (kuim.y - kuim.r - 4) * k - Math.sin(k * Math.PI) * 170;
+      if (k >= 1) {
+        chapeuVoando = null; kuim.chapeu = true; conquista('chapeu');
+        aviso('CHAPÉU ESTILOSO!', '#ffd84d', 'presente do chapeleiro');
+        for (let i = 0; i < 3; i++) brilho(kuim.x + entre(-40, 40), kuim.y - 40, '#ffd84d');
+      }
+    }
     for (const m of moedas) {
       if (!m.pega && Math.hypot(m.x - kuim.x, m.y - kuim.y) < kuim.r + 16) { m.pega = true; somaMoedas(HARDCORE ? 2 : 1); conquista('moeda1'); brilho(m.x, m.y, '#ffd84d'); }
     }
@@ -417,12 +492,16 @@
         kuim.golpe = 0.3;
         if (chefe && chefe.ativo && !chefe.morto && Math.abs(chefe.x - kuim.x) < chefe.r + 70 && Math.sign(chefe.x - kuim.x) === kuim.olhar && Math.abs(chefe.y - kuim.y) < chefe.r + 50)
           bater(10 + Math.floor(moedasPegas / 20), kuim.x + kuim.olhar * 60, kuim.y); // moeda deixa mais forte
+        for (const z of zumbis) if (!z.morto && (z.x - kuim.x) * kuim.olhar > -10 && Math.abs(z.x - kuim.x) < 100 && kuim.y + kuim.r > CHAO - 100) matarZumbi(z);
       }
     }
     ataquePedido = false;
     for (const t of tiros) {
       t.x += t.vx * dt; t.vida -= dt;
       if (chefe && chefe.ativo && !chefe.morto && Math.hypot(t.x - chefe.x, t.y - chefe.y) < chefe.r) { t.vida = 0; bater(15, t.x, t.y); }
+      for (const z of zumbis) if (t.vida > 0 && !z.morto && Math.abs(t.x - z.x) < 24 && t.y > CHAO - 86) {
+        t.vida = 0; z.vida -= 15; z.flash = 0.12; brilho(t.x, t.y, '#ffffff'); if (z.vida <= 0) matarZumbi(z);
+      }
     }
     for (let i = tiros.length - 1; i >= 0; i--) if (tiros[i].vida <= 0) tiros.splice(i, 1);
     // flechas do esqueleto: 20 de vida cada, só pulando para desviar
@@ -431,6 +510,19 @@
       if (kuim.morto <= 0 && Math.abs(f.x - kuim.x) < kuim.r + 14 && Math.abs(f.y - kuim.y) < kuim.r + 2) { f.vida = 0; dano(DANO_FLECHA, Math.sign(f.vx)); }
     }
     for (let i = flechas.length - 1; i >= 0; i--) if (flechas[i].vida <= 0) flechas.splice(i, 1);
+    // magias do Mago Gigante: bola roxa mirada no Kuim e espinhos que brotam do chão depois do aviso
+    for (const o of orbes) {
+      o.x += o.vx * dt; o.y += o.vy * dt; o.vida -= dt;
+      if (o.y > CHAO - 10) { o.vida = 0; brilho(o.x, CHAO - 10, '#b56bff'); }
+      else if (kuim.morto <= 0 && Math.hypot(o.x - kuim.x, o.y - kuim.y) < kuim.r + 14) { o.vida = 0; brilho(o.x, o.y, '#b56bff'); dano(DANO_MAGIA, Math.sign(o.vx) || -1); }
+    }
+    for (let i = orbes.length - 1; i >= 0; i--) if (orbes[i].vida <= 0) orbes.splice(i, 1);
+    for (const m of magEsp) {
+      m.t -= dt;
+      if (!m.fase && m.t <= 0) { m.fase = 1; m.t = 0.5; tremor = Math.max(tremor, 3); }
+      if (m.fase && kuim.morto <= 0 && Math.abs(kuim.x - m.x) < 50 + kuim.r * 0.6 && kuim.y + kuim.r > CHAO - 36) dano(DANO_ESPINHO, Math.sign(kuim.x - m.x) || -1);
+    }
+    for (let i = magEsp.length - 1; i >= 0; i--) if (magEsp[i].fase && magEsp[i].t <= 0) magEsp.splice(i, 1);
     if (acordouT > 0) { acordouT -= dt; if (acordouT <= 0) aviso('ALGO ACORDOU...', '#e9e4d4', 'um chefão secreto vem aí'); }
     // modo hardcore: 10 minutos vivo vence
     if (HARDCORE && !hcVenceu) {
@@ -477,11 +569,12 @@
     numeros.push({x, y: y - 30, txt: '-' + dano, vida: 0.7});
     brilho(x, y, '#ffffff');
     if (chefe.vida <= 0) {
-      const esq = chefe.tipo === 'esqueleto', premio = esq ? 150 : 100;
-      chefe.morto = true; somaMoedas(premio); tremor = 12; flechas.length = 0;
+      const esq = chefe.tipo === 'esqueleto', mg = chefe.tipo === 'mago', premio = mg ? 300 : esq ? 150 : 100;
+      chefe.morto = true; somaMoedas(premio); tremor = 12; flechas.length = 0; orbes.length = 0; magEsp.length = 0;
+      if (chefe.tipo === 'bolotao') pendente.push('vazio', 'vazio', 'mago', 'vazio'); // depois do Bolotão vem o Mago Gigante
       for (let i = 0; i < 8; i++) brilho(chefe.x + entre(-60, 60), chefe.y + entre(-60, 60), esq ? (i % 2 ? '#e9e4d4' : '#ffd84d') : (i % 2 ? '#ff3d8b' : '#ffd84d'));
       conquista(chefe.tipo);
-      aviso(esq ? 'ESQUELETO DESMONTADO!' : 'CHEFÃO DERROTADO!', '#ffd84d', `+${premio} moedas`);
+      aviso(mg ? 'MAGO APAGADO!' : esq ? 'ESQUELETO DESMONTADO!' : 'CHEFÃO DERROTADO!', '#ffd84d', `+${premio} moedas`);
     }
   }
   function atualizarChefe(dt) {
@@ -489,12 +582,14 @@
     const c = chefe;
     if (!c.ativo && kuim.x > c.arenaIni + 150) {
       c.ativo = true;
-      if (c.tipo === 'esqueleto') aviso('CHEFÃO SECRETO!', '#e9e4d4', `esqueleto com ${ESQ_VIDA} de vida`);
+      if (c.tipo === 'mago') aviso('MAGO GIGANTE!', '#b56bff', `${MAGO_VIDA} de vida`);
+      else if (c.tipo === 'esqueleto') aviso('CHEFÃO SECRETO!', '#e9e4d4', `esqueleto com ${ESQ_VIDA} de vida`);
       else aviso('CHEFÃO: BOLOTÃO', '#ff3d8b', `${CHEFE_VIDA} de vida`);
     }
     c.flash -= dt;
     if (!c.ativo) return;
     if (c.tipo === 'esqueleto') return atualizarEsqueleto(c, dt);
+    if (c.tipo === 'mago') return atualizarMago(c, dt);
     c.t -= dt;
     if (c.noChao && c.t <= 0) {
       const raiva = 1 - c.vida / c.vidaMax;
@@ -540,6 +635,38 @@
       if (temEspada && escudoT <= 0) { escudoT = 3; brilho(kuim.x + lado * -30, kuim.y, '#4dd2ff'); numeros.push({x: kuim.x, y: kuim.y - 50, txt: 'DEFENDEU!', vida: 0.8}); }
       else { kuim.inv = 0; dano(DANO_CHEFE, lado); }
     }
+  }
+  function atualizarMago(c, dt) {
+    c.olhar = Math.sign(kuim.x - c.x) || -1;
+    const raiva = 1 - c.vida / c.vidaMax;
+    c.x = c.base + Math.sin(tempo * 0.7) * 28;
+    c.t -= dt; c.cajado -= dt;
+    if (c.t <= 0) {
+      c.cajado = 0.45; c.vez++;
+      if (c.vez % 2) {
+        // magia: bola roxa que sai do cajado mirando onde o Kuim está
+        const ox = c.x + c.olhar * 95, oy = CHAO - 258, a = Math.atan2(kuim.y - oy, kuim.x - ox), v = 360 + raiva * 140;
+        orbes.push({x: ox, y: oy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vida: 3});
+      } else {
+        // espinhos: avisa no chão embaixo do Kuim e depois brota
+        magEsp.push({x: kuim.x, t: 0.9, fase: 0});
+        if (raiva > 0.5) magEsp.push({x: kuim.x + (rnd() < 0.5 ? -130 : 130), t: 1.15, fase: 0});
+      }
+      c.t = 1.6 - raiva * 0.8;
+    }
+    // encostou no manto
+    if (Math.hypot(c.x - kuim.x, c.y - kuim.y) < c.r + kuim.r - 6 && kuim.inv <= 0) {
+      const lado = Math.sign(kuim.x - c.x) || -1;
+      kuim.kb = lado * 520; kuim.vy = -520; kuim.noChao = false; kuim.inv = 0.8;
+      if (temEspada && escudoT <= 0) { escudoT = 3; brilho(kuim.x + lado * -30, kuim.y, '#4dd2ff'); numeros.push({x: kuim.x, y: kuim.y - 50, txt: 'DEFENDEU!', vida: 0.8}); }
+      else { kuim.inv = 0; dano(DANO_CHEFE, lado); }
+    }
+  }
+  function matarZumbi(z) {
+    z.morto = true; somaMoedas(HARDCORE ? ZUMBI_PREMIO * 2 : ZUMBI_PREMIO); tremor = Math.max(tremor, 4);
+    numeros.push({x: z.x, y: CHAO - 100, txt: '+' + (HARDCORE ? ZUMBI_PREMIO * 2 : ZUMBI_PREMIO) + ' 🪙', vida: 0.8});
+    brilho(z.x, CHAO - 50, '#6fbf4a'); brilho(z.x, CHAO - 30, '#ffd84d');
+    if (++zumbisMortos >= 10) conquista('zumbi10');
   }
   function poeira(x, y, n) { for (let i = 0; i < n; i++) particulas.push({x, y, vx: entre(-120, 120), vy: entre(-160, -40), vida: 0.4, g: 1, cor: '#c9b8ff', t: 4}); }
   function brilho(x, y, cor) { for (let i = 0; i < 10; i++) { const a = rnd() * 6.28; particulas.push({x, y, vx: Math.cos(a) * 220, vy: Math.sin(a) * 220, vida: 0.35, g: 0, cor, t: 5}); } }
@@ -642,6 +769,7 @@
       g.fillStyle = '#fff'; g.beginPath(); g.ellipse(ox + dx, -4, 8, fecha ? 1.5 : 10, 0, 0, 7); g.fill();
       if (!fecha) { g.fillStyle = '#1a0d2e'; g.beginPath(); g.arc(ox + dx + kuim.olhar * 3, -2, 4.5, 0, 7); g.fill(); }
     }
+    if (kuim.chapeu) desenharChapeu(ox * 0.5, -r + 5, 1); // presente do chapeleiro
     if (kuim.terno) { // bigode
       g.fillStyle = '#2a160a'; g.beginPath();
       g.ellipse(ox - 9, 11, 11, 5, 0.35, 0, 7); g.ellipse(ox + 9, 11, 11, 5, -0.35, 0, 7); g.fill();
@@ -680,6 +808,95 @@
     for (let k = -2; k <= 2; k++) g.fillRect(k * 6 - 1, -35, 2, 9);
     g.restore();
   }
+  function desenharChapeu(x, y, e) {
+    // chapéu estiloso: preto com faixa dourada e pena azul
+    g.save(); g.translate(x, y); g.scale(e, e);
+    g.strokeStyle = '#ffd84d'; g.lineWidth = 2; g.fillStyle = '#120a22';
+    g.beginPath(); g.roundRect(-19, -32, 38, 32, 7); g.fill(); g.stroke();
+    g.beginPath(); g.ellipse(0, 0, 36, 8, 0, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = '#ffd84d'; g.fillRect(-19, -13, 38, 7);
+    g.fillStyle = '#4dd2ff'; g.beginPath(); g.ellipse(18, -28, 5, 16, 0.5, 0, 7); g.fill();
+    g.restore();
+  }
+  function desenharChapeleiro() {
+    if (!chapeleiro) return;
+    const x = chapeleiro.x - cam; if (x < -120 || x > W + 120) return;
+    const pulo = chapeleiro.deu ? Math.abs(Math.sin(tempo * 6)) * 6 : 0;
+    g.save(); g.translate(x, CHAO - pulo);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(0, pulo + 2, 34, 6, 0, 0, 7); g.fill();
+    g.fillStyle = '#12b3a6'; g.beginPath(); g.roundRect(-30, -78, 60, 78, 22); g.fill();
+    g.fillStyle = '#0c8c82'; g.fillRect(-30, -22, 60, 8);
+    for (const dx of [-11, 11]) { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(dx - 4, -52, 8, 10, 0, 0, 7); g.fill(); g.fillStyle = '#1a0d2e'; g.beginPath(); g.arc(dx - 7, -50, 4.5, 0, 7); g.fill(); }
+    g.strokeStyle = '#1a0d2e'; g.lineWidth = 4; g.beginPath(); g.arc(-4, -36, 10, 0.2, 2.6); g.stroke();
+    // pilha de chapéus na cabeça (fica com 1 a menos depois de dar o presente)
+    for (let k = 0; k < (chapeleiro.deu ? 2 : 3); k++) desenharChapeu(0, -80 - k * 30, 1);
+    g.restore();
+    texto(chapeleiro.deu ? 'tá estiloso!' : 'CHAPÉUS', x, CHAO - 196 - (chapeleiro.deu ? 0 : 0), 22, '#ffd84d');
+  }
+  function desenharZumbi(z) {
+    const x = z.x - cam; if (z.morto || x < -60 || x > W + 60) return;
+    const p = Math.sin(tempo * 7 + z.min) * 5, pele = z.flash > 0 ? '#ffffff' : '#6fbf4a';
+    g.save(); g.translate(x, CHAO); g.scale(z.dir, 1);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(0, 2, 24, 5, 0, 0, 7); g.fill();
+    g.fillStyle = '#3b2a6b'; g.fillRect(-13, -24 + Math.max(0, p) * 0.6, 10, 24 - Math.max(0, p) * 0.6); g.fillRect(3, -24 + Math.max(0, -p) * 0.6, 10, 24 - Math.max(0, -p) * 0.6);
+    g.fillStyle = '#4a6fd6'; g.beginPath(); g.roundRect(-17, -54, 34, 34, 6); g.fill();
+    g.fillStyle = '#1b0f33'; g.beginPath(); g.moveTo(-17, -20); g.lineTo(-9, -29); g.lineTo(-2, -20); g.lineTo(6, -28); g.lineTo(17, -20); g.fill();
+    g.fillStyle = pele; g.fillRect(6, -48 + p * 0.4, 32, 8); g.fillRect(6, -36 - p * 0.4, 28, 8);
+    g.beginPath(); g.roundRect(-18, -86, 38, 34, 9); g.fill();
+    g.fillStyle = '#3f8a2a'; g.fillRect(-18, -86, 12, 8);
+    g.fillStyle = '#1a0d2e'; g.beginPath(); g.arc(0, -71, 4, 0, 7); g.arc(12, -72, 6, 0, 7); g.fill();
+    g.fillRect(0, -61, 15, 3);
+    g.restore();
+  }
+  function desenharMago(c, x) {
+    const cl = c.flash > 0, o = c.olhar || -1;
+    g.save(); g.translate(x, CHAO);
+    g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(0, 4, 112, 12, 0, 0, 7); g.fill();
+    g.translate(0, Math.sin(tempo * 2) * 6 - 8);
+    // manto azul com estrelas
+    g.fillStyle = cl ? '#fff' : '#2b2fb8'; g.beginPath(); g.moveTo(-105, 0); g.lineTo(-48, -215); g.lineTo(48, -215); g.lineTo(105, 0); g.fill();
+    g.fillStyle = cl ? '#fff' : '#1c1f85'; g.beginPath(); g.moveTo(-20, 0); g.lineTo(-8, -200); g.lineTo(8, -200); g.lineTo(20, 0); g.fill();
+    g.fillStyle = '#ffd84d'; for (const [sx, sy] of [[-58, -55], [50, -92], [-38, -140], [64, -32]]) { g.save(); g.translate(sx, sy); g.rotate(tempo + sx); g.fillRect(-4, -4, 8, 8); g.restore(); }
+    // cabeça, barba e cara de bravo
+    g.fillStyle = cl ? '#fff' : '#f0c9a0'; g.beginPath(); g.arc(0, -236, 44, 0, 7); g.fill();
+    g.fillStyle = '#f4f0ff'; g.beginPath(); g.moveTo(-42, -230); g.lineTo(42, -230); g.lineTo(o * 6, -118); g.fill();
+    g.fillStyle = '#1a0d2e'; g.beginPath(); g.arc(-15 + o * 6, -246, 6, 0, 7); g.arc(15 + o * 6, -246, 6, 0, 7); g.fill();
+    g.strokeStyle = '#f4f0ff'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(-30 + o * 6, -264); g.lineTo(-7 + o * 6, -255); g.moveTo(30 + o * 6, -264); g.lineTo(7 + o * 6, -255); g.stroke();
+    // chapéu pontudo
+    g.fillStyle = cl ? '#fff' : '#2b2fb8'; g.beginPath(); g.moveTo(-60, -264); g.lineTo(60, -264); g.lineTo(-o * 16, -388); g.fill();
+    g.beginPath(); g.ellipse(0, -264, 80, 13, 0, 0, 7); g.fill();
+    g.fillStyle = '#ffd84d'; g.fillRect(-48, -288, 96, 10);
+    // cajado com a bola de magia
+    const er = c.cajado > 0 ? -22 : 0;
+    g.strokeStyle = '#7a4a1e'; g.lineWidth = 9; g.beginPath(); g.moveTo(o * 88, -8); g.lineTo(o * 95, -232 + er); g.stroke();
+    g.fillStyle = cl ? '#fff' : '#f0c9a0'; g.beginPath(); g.arc(o * 91, -112 + er * 0.5, 13, 0, 7); g.fill();
+    g.fillStyle = 'rgba(181,107,255,.35)'; g.beginPath(); g.arc(o * 95, -250 + er, 30 + Math.sin(tempo * 8) * 4, 0, 7); g.fill();
+    g.fillStyle = '#b56bff'; g.beginPath(); g.arc(o * 95, -250 + er, 18, 0, 7); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(o * 95 - 5, -255 + er, 6, 0, 7); g.fill();
+    g.restore();
+  }
+  function desenharMagias() {
+    for (const m of magEsp) {
+      const x = m.x - cam;
+      if (!m.fase) { // aviso: o chão brilha roxo antes de espetar
+        g.globalAlpha = 0.45 + Math.sin(tempo * 30) * 0.25;
+        g.fillStyle = '#b56bff'; g.beginPath(); g.ellipse(x, CHAO + 2, 58, 11, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+        texto('!', x, CHAO - 16, 34, '#b56bff');
+      } else {
+        const alt = 46 * Math.min(1, (0.5 - m.t) * 9, m.t * 9);
+        for (let k = -2; k < 2; k++) {
+          g.fillStyle = '#b56bff'; g.beginPath(); g.moveTo(x + k * 26, CHAO); g.lineTo(x + k * 26 + 13, CHAO - alt); g.lineTo(x + k * 26 + 26, CHAO); g.fill();
+          g.fillStyle = '#6a2bd6'; g.beginPath(); g.moveTo(x + k * 26 + 13, CHAO - alt); g.lineTo(x + k * 26 + 26, CHAO); g.lineTo(x + k * 26 + 15, CHAO); g.fill();
+        }
+      }
+    }
+    for (const o of orbes) {
+      const x = o.x - cam;
+      g.fillStyle = 'rgba(181,107,255,.35)'; g.beginPath(); g.arc(x, o.y, 24, 0, 7); g.fill();
+      g.fillStyle = '#b56bff'; g.beginPath(); g.arc(x, o.y, 14, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(x - 4, o.y - 4, 5, 0, 7); g.fill();
+    }
+  }
   function desenharFlecha(f) {
     const x = f.x - cam, s = Math.sign(f.vx);
     g.save(); g.translate(x, f.y); g.scale(s, 1);
@@ -690,8 +907,9 @@
   }
   function desenharChefe() {
     if (!chefe || chefe.morto) return;
-    const c = chefe, x = c.x - cam; if (x < -150 || x > W + 150) return;
+    const c = chefe, x = c.x - cam; if (x < -170 || x > W + 170) return;
     if (c.tipo === 'esqueleto') return desenharEsqueleto(c, x);
+    if (c.tipo === 'mago') return desenharMago(c, x);
     g.save(); g.translate(x, c.y); g.scale(1 - c.esticar * 0.15, 1 + c.esticar * 0.2);
     g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(0, c.r + 2, c.r, 10, 0, 0, 7); g.fill();
     g.fillStyle = c.flash > 0 ? '#ffffff' : '#7a2bd6'; g.beginPath(); g.ellipse(0, 0, c.r * 1.15, c.r, 0, 0, 7); g.fill();
@@ -735,7 +953,7 @@
       texto(`0:${String(t).padStart(2, '0')}`, W / 2, 310, 58, '#ffd84d');
     }
     if (chefe && chefe.ativo && !chefe.morto) {
-      const bw = 380, bx = (W - bw) / 2, by = 230, cor = chefe.tipo === 'esqueleto' ? '#e9e4d4' : '#ff3d8b';
+      const bw = 380, bx = (W - bw) / 2, by = 230, cor = chefe.tipo === 'mago' ? '#b56bff' : chefe.tipo === 'esqueleto' ? '#e9e4d4' : '#ff3d8b';
       texto(chefe.nome, W / 2, by - 12, 30, cor);
       g.fillStyle = '#120a22'; g.fillRect(bx - 4, by - 4, bw + 8, 30);
       g.fillStyle = cor; g.fillRect(bx, by, bw * chefe.vida / chefe.vidaMax, 22);
@@ -851,7 +1069,11 @@
       g.fillStyle = '#fff3b0'; g.beginPath(); g.ellipse(x - larg * 0.3, m.y + flut - 4, larg * 0.3, 5, 0, 0, 7); g.fill();
     }
     for (const it of itens) if (!it.pego) desenharItem(it);
+    desenharChapeleiro();
+    for (const z of zumbis) desenharZumbi(z);
     desenharChefe();
+    desenharMagias();
+    if (chapeuVoando) { g.save(); g.translate(chapeuVoando.x - cam, chapeuVoando.y); g.rotate(chapeuVoando.t * 9); desenharChapeu(0, 14, 1.15); g.restore(); }
     for (const f of flechas) desenharFlecha(f);
     for (const t of tiros) { g.fillStyle = '#ffd84d'; g.beginPath(); g.arc(t.x - cam, t.y, 8, 0, 7); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(t.x - cam, t.y, 4, 0, 7); g.fill(); }
     for (const p of particulas) { g.globalAlpha = Math.max(0, p.vida * 2.5); g.fillStyle = p.cor; g.fillRect(p.x - cam, p.y, p.t, p.t); }
@@ -922,5 +1144,5 @@
     } catch (e) { st.textContent = 'Não deu para ler o cofre agora.'; }
   }
   if (DEMO) document.getElementById('controles').style.display = 'none';
-  if (params.has('dbg')) window.__dbg = () => ({kx: kuim.x | 0, ky: kuim.y | 0, vx: kuim.vx | 0, noChao: kuim.noChao, est: desafio && desafio.estado, plats: plataformas.filter(p => p.x + p.w > kuim.x - 100 && p.x < kuim.x + 300).map(p => [p.x | 0, p.y, p.w | 0, p.lava ? 'L' : p.chao ? 'C' : 'P'].join(':')).join(' ')});
+  if (params.has('dbg')) window.__dbg = () => ({vida: kuim.vida, chapeu: kuim.chapeu, zm: zumbisMortos, zv: zumbis.filter(z => !z.morto).length, chefe: chefe && [chefe.tipo, chefe.vida, chefe.ativo, chefe.morto].join(':'), moedas: moedasPegas, mortes, kx: kuim.x | 0, ky: kuim.y | 0, vx: kuim.vx | 0, noChao: kuim.noChao, est: desafio && desafio.estado, plats: plataformas.filter(p => p.x + p.w > kuim.x - 100 && p.x < kuim.x + 300).map(p => [p.x | 0, p.y, p.w | 0, p.lava ? 'L' : p.chao ? 'C' : 'P'].join(':')).join(' ')});
 })();
